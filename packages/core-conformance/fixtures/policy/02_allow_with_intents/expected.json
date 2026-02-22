@@ -1,0 +1,9 @@
+{
+  "allow": true,
+  "reasons": [
+    {"code": "R_POLICY_ALLOW"}
+  ],
+  "intents": [
+    {"kind": "audit", "target": "user.profile"}
+  ]
+}
