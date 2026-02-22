@@ -1,4 +1,4 @@
-"""ACL engine — role-based and attribute-based access control.
+"""ACL engine — RBAC + optional ABAC + maskField Intent output.
 
 Per MASTER_SPEC section 14.
 """

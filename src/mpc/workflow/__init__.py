@@ -2,6 +2,20 @@
 
 Per MASTER_SPEC section 12.
 """
-from mpc.workflow.fsm import WorkflowEngine, FSMState, Transition
+from mpc.workflow.fsm import (
+    WorkflowEngine,
+    FSMState,
+    Transition,
+    FireResult,
+    GuardPort,
+    AuthPort,
+)
 
-__all__ = ["WorkflowEngine", "FSMState", "Transition"]
+__all__ = [
+    "WorkflowEngine",
+    "FSMState",
+    "Transition",
+    "FireResult",
+    "GuardPort",
+    "AuthPort",
+]
