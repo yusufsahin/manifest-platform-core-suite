@@ -1,0 +1,15 @@
+{
+  "trace": {
+    "spanId": "s1",
+    "engine": "core-policy",
+    "events": [
+      {
+        "t": "log",
+        "data": {
+          "password": "***",
+          "ssn": "***"
+        }
+      }
+    ]
+  }
+}

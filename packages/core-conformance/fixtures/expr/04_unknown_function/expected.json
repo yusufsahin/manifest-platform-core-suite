@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_EXPR_UNKNOWN_FUNCTION",
+    "message": "Unknown function: 'toUpperCase'",
+    "severity": "error"
+  }
+}

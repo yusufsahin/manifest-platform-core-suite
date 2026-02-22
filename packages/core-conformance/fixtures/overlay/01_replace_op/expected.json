@@ -1,0 +1,6 @@
+{
+  "attributes": { "effect": "deny", "ttl": 3600 },
+  "id": "p1",
+  "kind": "Policy",
+  "namespace": "acme"
+}

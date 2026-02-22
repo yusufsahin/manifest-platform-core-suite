@@ -1,0 +1,15 @@
+{
+  "presetVersion": "1.0.0",
+  "name": "preset-generic-min",
+  "metaSchemaVersion": 1,
+  "defaultLimits": {
+    "maxManifestNodes": 500,
+    "maxExprSteps": 500,
+    "maxExprDepth": 10,
+    "maxEvalTimeMs": 10,
+    "maxRegexOps": 100
+  },
+  "defaultPolicyStrategy": {
+    "compose": "deny-wins"
+  }
+}

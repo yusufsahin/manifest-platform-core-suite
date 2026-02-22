@@ -1,0 +1,16 @@
+{
+  "base": {
+    "id": "p1",
+    "kind": "Policy",
+    "namespace": "acme",
+    "attributes": { "effect": "allow", "tags": ["read"], "ttl": 3600 }
+  },
+  "overlays": [
+    {
+      "selector": { "id": "p1", "kind": "Policy", "namespace": "acme" },
+      "op": "merge",
+      "path": "attributes",
+      "value": { "owner": "team-a", "ttl": 7200 }
+    }
+  ]
+}

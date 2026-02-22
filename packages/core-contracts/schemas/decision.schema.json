@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decision",
+  "type": "object",
+  "required": [
+    "allow"
+  ],
+  "properties": {
+    "allow": {
+      "type": "boolean"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "level",
+          "text"
+        ],
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warn",
+              "error"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "i18nKey": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "intents": {
+      "type": "array",
+      "items": {
+        "$ref": "intent.schema.json"
+      }
+    },
+    "trace": {
+      "type": "object"
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "artifactHash": {
+          "type": "string",
+          "description": "MUST be present in enterprise mode. SHA-256 hash of the compiled artifact."
+        },
+        "engine": {
+          "type": "string",
+          "description": "MUST be present in enterprise mode. Engine identifier (e.g. core-policy)."
+        },
+        "engineVersion": {
+          "type": "string",
+          "description": "MUST be present in enterprise mode. Semver of the engine."
+        },
+        "traceSpanId": {
+          "type": "string",
+          "description": "Correlation ID linking this decision to its Trace."
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

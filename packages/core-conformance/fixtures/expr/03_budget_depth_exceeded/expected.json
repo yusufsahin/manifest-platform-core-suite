@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_EXPR_LIMIT_DEPTH",
+    "message": "Expression depth limit exceeded (limit: 1)",
+    "severity": "error"
+  }
+}

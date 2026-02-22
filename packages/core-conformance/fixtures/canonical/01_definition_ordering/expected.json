@@ -1,0 +1,7 @@
+{
+  "definitions": [
+    { "id": "a", "name": "alpha", "priority": 2 },
+    { "id": "b", "name": "beta", "priority": 1 },
+    { "id": "c", "name": "gamma", "priority": 1 }
+  ]
+}

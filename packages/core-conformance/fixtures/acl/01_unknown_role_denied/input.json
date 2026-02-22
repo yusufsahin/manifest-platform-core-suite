@@ -1,0 +1,9 @@
+{
+  "action": "delete",
+  "actor": { "id": "u1", "roles": ["viewer"], "type": "user" },
+  "object": { "id": "e1", "type": "entity" },
+  "rules": [
+    { "actions": ["create", "update", "delete"], "role": "admin" },
+    { "actions": ["create", "update"], "role": "editor" }
+  ]
+}

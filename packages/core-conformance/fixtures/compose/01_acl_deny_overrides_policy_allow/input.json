@@ -1,0 +1,21 @@
+{
+  "decisions": [
+    {
+      "allow": true,
+      "reasons": [
+        {
+          "code": "R_POLICY_ALLOW"
+        }
+      ]
+    },
+    {
+      "allow": false,
+      "reasons": [
+        {
+          "code": "R_ACL_DENY_ROLE"
+        }
+      ]
+    }
+  ],
+  "strategy": "deny-wins"
+}

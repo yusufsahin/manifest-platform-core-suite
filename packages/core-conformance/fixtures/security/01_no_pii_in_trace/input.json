@@ -1,0 +1,22 @@
+{
+  "trace": {
+    "spanId": "s1",
+    "engine": "core-policy",
+    "events": [
+      {
+        "t": "log",
+        "data": {
+          "password": "secret",
+          "ssn": "123"
+        }
+      }
+    ]
+  },
+  "redactionPolicy": {
+    "denyKeys": [
+      "password",
+      "ssn"
+    ],
+    "mask": "***"
+  }
+}

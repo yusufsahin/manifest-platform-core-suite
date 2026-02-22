@@ -1,0 +1,6 @@
+{
+  "zebra": true,
+  "apple": 1,
+  "mango": { "zoo": "last", "ant": "first" },
+  "banana": [3, 1, 2]
+}

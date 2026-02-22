@@ -1,0 +1,8 @@
+{
+  "states": ["draft", "published"],
+  "transitions": [
+    { "from": "draft", "on": "publish", "to": "published" }
+  ],
+  "current": "published",
+  "event": "publish"
+}

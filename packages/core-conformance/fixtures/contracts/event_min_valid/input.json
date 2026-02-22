@@ -1,0 +1,13 @@
+{
+  "name": "entity.create",
+  "kind": "create",
+  "timestamp": "2026-02-22T00:00:00+03:00",
+  "actor": {
+    "id": "u1",
+    "type": "user"
+  },
+  "object": {
+    "type": "entity",
+    "id": "e1"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_WF_UNKNOWN_TRANSITION",
+    "message": "No transition 'publish' defined from state 'published'",
+    "severity": "error"
+  }
+}

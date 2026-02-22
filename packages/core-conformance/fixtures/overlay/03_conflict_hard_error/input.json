@@ -1,0 +1,22 @@
+{
+  "base": {
+    "id": "p1",
+    "kind": "Policy",
+    "namespace": "acme",
+    "attributes": { "effect": "allow" }
+  },
+  "overlays": [
+    {
+      "selector": { "id": "p1", "kind": "Policy", "namespace": "acme" },
+      "op": "replace",
+      "path": "attributes.effect",
+      "value": "deny"
+    },
+    {
+      "selector": { "id": "p1", "kind": "Policy", "namespace": "acme" },
+      "op": "replace",
+      "path": "attributes.effect",
+      "value": "allow"
+    }
+  ]
+}

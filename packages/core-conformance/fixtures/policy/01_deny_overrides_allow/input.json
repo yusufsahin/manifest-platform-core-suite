@@ -1,0 +1,28 @@
+{
+  "event": {
+    "actor": { "id": "u1", "roles": ["editor"], "type": "user" },
+    "kind": "delete",
+    "name": "entity.delete",
+    "object": { "id": "e1", "type": "entity" },
+    "timestamp": "2026-02-22T00:00:00+03:00"
+  },
+  "policies": [
+    {
+      "effect": "allow",
+      "id": "p1",
+      "match": { "kind": "delete" },
+      "name": "allow-editors",
+      "priority": 10,
+      "reason": "R_POLICY_ALLOW"
+    },
+    {
+      "effect": "deny",
+      "id": "p2",
+      "match": { "kind": "delete", "object.type": "entity" },
+      "name": "deny-delete-protected",
+      "priority": 20,
+      "reason": "R_POLICY_DENY"
+    }
+  ],
+  "strategy": "deny-wins"
+}

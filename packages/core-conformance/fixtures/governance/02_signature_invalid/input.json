@@ -1,0 +1,9 @@
+{
+  "enterpriseMode": true,
+  "artifact": {
+    "provenance": {
+      "astHash": "abc123"
+    },
+    "signature": "INVALIDSIG_tampered_payload"
+  }
+}

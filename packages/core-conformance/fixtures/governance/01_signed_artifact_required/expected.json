@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_GOV_SIGNATURE_REQUIRED",
+    "message": "Enterprise mode requires a signature; artifact has none",
+    "severity": "fatal"
+  }
+}

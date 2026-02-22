@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Error",
+  "type": "object",
+  "required": [
+    "code",
+    "message",
+    "severity"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warn",
+        "error",
+        "fatal"
+      ]
+    },
+    "path": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "span": {
+          "type": "object",
+          "properties": {
+            "line2": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "col2": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "details": {
+      "type": "object"
+    },
+    "causes": {
+      "type": "array",
+      "items": {
+        "$ref": "error.schema.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "expr": {
+    "fn": "len",
+    "args": [
+      {
+        "lit": 5
+      }
+    ]
+  },
+  "typeEnv": {},
+  "functions": [
+    "len"
+  ]
+}

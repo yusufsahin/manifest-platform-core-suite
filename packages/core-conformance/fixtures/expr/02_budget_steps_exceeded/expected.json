@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_BUDGET_EXCEEDED",
+    "message": "Expression evaluation exceeded step budget (limit: 1)",
+    "severity": "error"
+  }
+}

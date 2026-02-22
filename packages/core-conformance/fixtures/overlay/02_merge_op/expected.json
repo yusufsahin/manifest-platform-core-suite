@@ -1,0 +1,6 @@
+{
+  "attributes": { "effect": "allow", "owner": "team-a", "tags": ["read"], "ttl": 7200 },
+  "id": "p1",
+  "kind": "Policy",
+  "namespace": "acme"
+}

@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_WF_NO_INITIAL",
+    "message": "Workflow definition must declare an initial state",
+    "severity": "error"
+  }
+}

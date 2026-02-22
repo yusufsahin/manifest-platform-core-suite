@@ -1,0 +1,5 @@
+{
+  "expr": { "fn": "len", "args": [{ "lit": "hello" }] },
+  "typeEnv": {},
+  "functions": ["len"]
+}

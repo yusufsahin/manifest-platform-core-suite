@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_GOV_SIGNATURE_INVALID",
+    "message": "Artifact signature verification failed",
+    "severity": "fatal"
+  }
+}

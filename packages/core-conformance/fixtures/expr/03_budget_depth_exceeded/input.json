@@ -1,0 +1,8 @@
+{
+  "expr": {
+    "fn": "isEmpty",
+    "args": [{ "fn": "len", "args": [{ "lit": "hello" }] }]
+  },
+  "typeEnv": {},
+  "functions": ["len", "isEmpty"]
+}

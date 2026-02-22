@@ -1,0 +1,12 @@
+{
+  "action": "read",
+  "actor": { "id": "u1", "roles": ["viewer"], "type": "user" },
+  "object": { "id": "doc-1", "type": "document" },
+  "rules": [
+    {
+      "role": "viewer",
+      "actions": ["read"],
+      "maskFields": ["content.ssn", "content.salary"]
+    }
+  ]
+}

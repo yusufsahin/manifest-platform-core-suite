@@ -1,0 +1,5 @@
+{
+  "code": "E_PARSE_SYNTAX",
+  "message": "Unexpected token at line 3",
+  "severity": "error"
+}

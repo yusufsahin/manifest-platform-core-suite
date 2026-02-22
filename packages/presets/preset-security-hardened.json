@@ -1,0 +1,20 @@
+{
+  "presetVersion": "1.0.0",
+  "name": "preset-security-hardened",
+  "metaSchemaVersion": 1,
+  "defaultLimits": {
+    "maxManifestNodes": 5000,
+    "maxExprSteps": 1500,
+    "maxExprDepth": 30,
+    "maxEvalTimeMs": 20,
+    "maxRegexOps": 1000
+  },
+  "featureFlags": {
+    "allowNowFunction": false,
+    "allowRegex": true,
+    "denyByDefaultACL": true
+  },
+  "defaultPolicyStrategy": {
+    "compose": "deny-wins"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "presetVersion": "1.0.0",
+  "name": "preset-ui-friendly",
+  "metaSchemaVersion": 1,
+  "defaultLimits": {
+    "maxManifestNodes": 10000,
+    "maxExprSteps": 5000,
+    "maxExprDepth": 50,
+    "maxEvalTimeMs": 100,
+    "maxRegexOps": 5000
+  },
+  "featureFlags": {
+    "allowNowFunction": true,
+    "allowRegex": true,
+    "denyByDefaultACL": false,
+    "uiSchemaHints": true
+  },
+  "defaultPolicyStrategy": {
+    "compose": "deny-wins"
+  }
+}

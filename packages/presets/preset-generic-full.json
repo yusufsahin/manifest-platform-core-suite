@@ -1,0 +1,42 @@
+{
+  "presetVersion": "1.0.0",
+  "name": "preset-generic-full",
+  "metaSchemaVersion": 1,
+  "defaultLimits": {
+    "maxManifestNodes": 10000,
+    "maxExprSteps": 5000,
+    "maxExprDepth": 50,
+    "maxEvalTimeMs": 50,
+    "maxRegexOps": 5000
+  },
+  "defaultFunctions": [
+    {
+      "name": "len",
+      "args": [
+        "string|array"
+      ],
+      "returns": "int",
+      "cost": 2
+    },
+    {
+      "name": "isEmpty",
+      "args": [
+        "any"
+      ],
+      "returns": "bool",
+      "cost": 2
+    },
+    {
+      "name": "regex",
+      "args": [
+        "string",
+        "string"
+      ],
+      "returns": "bool",
+      "cost": 20
+    }
+  ],
+  "defaultPolicyStrategy": {
+    "compose": "deny-wins"
+  }
+}
