@@ -38,4 +38,16 @@ def _detect_format(text: str) -> str:
         return "json"
     if stripped.startswith("@") or stripped.startswith("def "):
         return "dsl"
+    significant = _skip_line_comments(stripped)
+    if significant.startswith("@") or significant.startswith("def "):
+        return "dsl"
     return "yaml"
+
+
+def _skip_line_comments(text: str) -> str:
+    """Skip leading ``//`` comment lines and return the first significant line."""
+    for line in text.splitlines():
+        s = line.lstrip()
+        if s and not s.startswith("//"):
+            return s
+    return ""

@@ -227,6 +227,29 @@ class TestDslFrontend:
         assert ast.defs[0].source is not None
         assert ast.defs[0].source.line is not None
 
+    def test_escape_sequences(self):
+        dsl = textwrap.dedent("""\
+            @schema 1
+            @namespace "ns"
+            @name "n"
+            @version "1.0.0"
+
+            def Config c1 {
+                line_break: "line1\\nline2"
+                tab: "col1\\tcol2"
+                quote: "say \\"hello\\""
+                backslash: "a\\\\b"
+                unicode: "\\u0041\\u0042"
+            }
+        """)
+        ast = parse_dsl(dsl)
+        p = ast.defs[0].properties
+        assert p["line_break"] == "line1\nline2"
+        assert p["tab"] == "col1\tcol2"
+        assert p["quote"] == 'say "hello"'
+        assert p["backslash"] == "a\\b"
+        assert p["unicode"] == "AB"
+
     def test_parse_error(self):
         with pytest.raises(MPCError) as exc_info:
             parse_dsl("def ??? {{{")
@@ -250,6 +273,11 @@ class TestAutoDetect:
 
     def test_detects_dsl(self):
         dsl = '@schema 1\n@namespace "a"\n@name "b"\n@version "1.0.0"\n'
+        ast = parse(dsl)
+        assert ast.namespace == "a"
+
+    def test_detects_dsl_with_leading_comments(self):
+        dsl = '// MPC manifest\n// Author: test\n@schema 1\n@namespace "a"\n@name "b"\n@version "1.0.0"\n'
         ast = parse(dsl)
         assert ast.namespace == "a"
 

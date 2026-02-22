@@ -72,3 +72,17 @@ class TestMetaDiff:
         result = diff_meta(old, new)
         assert not result.has_breaking
         assert any("len" in nb for nb in result.non_breaking)
+
+    def test_event_removed_is_breaking(self):
+        old = DomainMeta(allowed_events=["user.created", "user.deleted"])
+        new = DomainMeta(allowed_events=["user.created"])
+        result = diff_meta(old, new)
+        assert result.has_breaking
+        assert any("user.deleted" in b for b in result.breaking)
+
+    def test_event_added_is_non_breaking(self):
+        old = DomainMeta(allowed_events=["user.created"])
+        new = DomainMeta(allowed_events=["user.created", "user.deleted"])
+        result = diff_meta(old, new)
+        assert not result.has_breaking
+        assert any("user.deleted" in nb for nb in result.non_breaking)
