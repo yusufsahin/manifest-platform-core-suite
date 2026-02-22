@@ -1,0 +1,17 @@
+{
+  "event": {
+    "kind": "read",
+    "resource": "user.profile"
+  },
+  "policies": [
+    {
+      "id": "audit_reads",
+      "effect": "allow",
+      "match": {"kind": "read"},
+      "priority": 10,
+      "intents": [
+        {"kind": "audit", "target": "user.profile"}
+      ]
+    }
+  ]
+}
