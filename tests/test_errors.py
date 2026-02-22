@@ -91,3 +91,9 @@ class TestExceptions:
         exc = MPCBudgetError("E_BUDGET_EXCEEDED", "too many steps", limit=100)
         assert exc.limit == 100
         assert exc.code == "E_BUDGET_EXCEEDED"
+
+    def test_mpc_validation_error_uses_registered_code(self):
+        """BUG-8 regression: MPCValidationError.code must be in ERROR_CODES."""
+        from mpc.errors import MPCValidationError
+        exc = MPCValidationError([])
+        assert exc.code in ERROR_CODES

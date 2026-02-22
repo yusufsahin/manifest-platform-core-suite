@@ -58,11 +58,12 @@ def _ser(value: Any) -> Any:
 # from_dict
 # ---------------------------------------------------------------------------
 
-def from_dict(cls: type[T], data: dict[str, Any]) -> T:
+def from_dict(cls: type[T], data: dict[str, Any], *, strict: bool = False) -> T:
     """Create a contract dataclass from a JSON-schema-compatible dict.
 
     - Maps JSON camelCase keys back to Python snake_case.
     - Recursively deserialises nested dataclasses and typed lists.
+    - When *strict* is True, raises ``ValueError`` on unrecognised keys.
     """
     if not dataclasses.is_dataclass(cls):
         raise TypeError(f"Expected a dataclass type, got {cls}")
@@ -74,6 +75,11 @@ def from_dict(cls: type[T], data: dict[str, Any]) -> T:
     for key, value in data.items():
         py_key = _JSON_TO_PYTHON.get(key, key)
         if py_key not in valid_names:
+            if strict:
+                raise ValueError(
+                    f"Unknown key '{key}' for {cls.__name__}. "
+                    f"Valid keys: {sorted(valid_names)}"
+                )
             continue
         kwargs[py_key] = _deser(hints.get(py_key), value)
 

@@ -9,6 +9,7 @@ Implements the behaviour described in tools/CONFORMANCE_RUNNER_SPEC.md:
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -43,6 +44,7 @@ class FixtureResult:
     skip_reason: str | None = None
     diff: list[str] = field(default_factory=list)
     violations: list[str] = field(default_factory=list)
+    trace: list[str] = field(default_factory=list)
 
 
 CategoryHandler = Callable[["ConformanceRunner", FixtureContext], dict[str, Any]]
@@ -119,6 +121,17 @@ class ConformanceRunner:
                 results.append(self.run_fixture(fixture_dir))
         return results
 
+    def run_category(self, category: str) -> list[FixtureResult]:
+        """Run all fixtures for a single *category* and return results."""
+        results: list[FixtureResult] = []
+        category_dir = self.fixtures_root / category
+        if not category_dir.is_dir():
+            return results
+        for fixture_dir in sorted(category_dir.iterdir()):
+            if fixture_dir.is_dir():
+                results.append(self.run_fixture(fixture_dir))
+        return results
+
     def run_fixture(self, fixture_dir: Path) -> FixtureResult:
         """Run a single fixture directory and return the result."""
         category = fixture_dir.parent.name
@@ -171,6 +184,14 @@ class ConformanceRunner:
                 fixture=fixture_label, passed=False, diff=[f"Handler error: {exc}"]
             )
 
+        canon_err = _check_canonicalizable(output)
+        if canon_err is not None:
+            return FixtureResult(
+                fixture=fixture_label,
+                passed=False,
+                diff=[f"Output not canonicalizable: {canon_err}"],
+            )
+
         violations = validate_all_codes(output)
 
         canon_output = canonicalize(output)
@@ -184,11 +205,13 @@ class ConformanceRunner:
             if canon_output != canon_expected
             else []
         )
+        trace = _extract_trace(output)
         return FixtureResult(
             fixture=fixture_label,
             passed=False,
             diff=diff,
             violations=violations,
+            trace=trace,
         )
 
     # -- built-in category handlers -----------------------------------------
@@ -231,9 +254,10 @@ class ConformanceRunner:
             return {"valid": True}
 
         first = errors[0]
+        code = _classify_schema_error(first)
         return {
             "error": {
-                "code": "E_VALID_DUPLICATE_DEF",
+                "code": code,
                 "message": first.message,
                 "severity": "error",
             }
@@ -241,14 +265,85 @@ class ConformanceRunner:
 
     def _handle_canonical(self, ctx: FixtureContext) -> dict[str, Any]:
         result = ctx.input_data
-        if "definitions" in result:
-            result = {**result, "definitions": order_definitions(result["definitions"])}
+        result = _apply_ordering_recursive(result)
         return result
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _apply_ordering_recursive(obj: Any) -> Any:
+    """Recursively apply definition ordering to any dict containing
+    ``definitions`` or ``defs`` keys."""
+    if isinstance(obj, dict):
+        result = {}
+        for k, v in obj.items():
+            if k in ("definitions", "defs") and isinstance(v, list):
+                result[k] = order_definitions(
+                    [_apply_ordering_recursive(item) for item in v]
+                )
+            else:
+                result[k] = _apply_ordering_recursive(v)
+        return result
+    if isinstance(obj, list):
+        return [_apply_ordering_recursive(item) for item in obj]
+    return obj
+
+
+def _check_canonicalizable(output: Any) -> str | None:
+    """Return an error message if *output* cannot be safely canonicalized."""
+    try:
+        _walk_check(output)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+def _walk_check(obj: Any) -> None:
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            raise ValueError(f"Non-finite number: {obj}")
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _walk_check(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            _walk_check(item)
+
+
+def _classify_schema_error(error: jsonschema.ValidationError) -> str:
+    """Map a jsonschema validation error to the closest registered E_* code."""
+    validator = error.validator
+    if validator == "required":
+        return "E_META_MISSING_REQUIRED_FIELD"
+    if validator == "type":
+        return "E_META_TYPE_NOT_ALLOWED"
+    if validator in ("additionalProperties", "unevaluatedProperties"):
+        return "E_META_UNKNOWN_KIND"
+    return "E_PARSE_SYNTAX"
+
+
+def _extract_trace(output: Any) -> list[str]:
+    """Extract trace snippets from output if present."""
+    traces: list[str] = []
+    if isinstance(output, dict):
+        trace_data = output.get("trace")
+        if isinstance(trace_data, dict):
+            events = trace_data.get("events", [])
+            if isinstance(events, list):
+                for ev in events[:5]:
+                    if isinstance(ev, dict):
+                        label = ev.get("label", ev.get("name", "?"))
+                        duration = ev.get("durationMs", "?")
+                        traces.append(f"  {label} ({duration}ms)")
+        elif isinstance(trace_data, list):
+            for ev in trace_data[:5]:
+                if isinstance(ev, dict):
+                    label = ev.get("label", ev.get("name", "?"))
+                    traces.append(f"  {label}")
+    return traces
+
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))

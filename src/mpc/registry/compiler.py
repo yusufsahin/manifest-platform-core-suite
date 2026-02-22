@@ -7,13 +7,12 @@ Per MASTER_SPEC section 10:
 """
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
 from mpc.ast.models import ASTNode, ManifestAST
 from mpc.canonical import stable_hash
-from mpc.contracts.serialization import to_dict as _dc_to_dict
+from mpc.canonical.ordering import order_definitions
 from mpc.meta.models import DomainMeta
 
 
@@ -34,7 +33,15 @@ def compile_registry(
     engine_version: str = "0.1.0",
 ) -> CompiledRegistry:
     """Compile *ast* + *meta* into a deterministic, cacheable registry."""
-    ast_hash = stable_hash(_ast_to_dict(ast))
+    ordered_defs = order_definitions([_node_to_dict(d) for d in ast.defs])
+    ast_dict = {
+        "schemaVersion": ast.schema_version,
+        "namespace": ast.namespace,
+        "name": ast.name,
+        "manifestVersion": ast.manifest_version,
+        "defs": ordered_defs,
+    }
+    ast_hash = stable_hash(ast_dict)
     meta_hash = stable_hash(_meta_to_dict(meta))
     artifact_hash = stable_hash(
         {"astHash": ast_hash, "metaHash": meta_hash, "engineVersion": engine_version}
@@ -64,21 +71,12 @@ def compile_registry(
     )
 
 
-def _ast_to_dict(ast: ManifestAST) -> dict[str, Any]:
-    return {
-        "schemaVersion": ast.schema_version,
-        "namespace": ast.namespace,
-        "name": ast.name,
-        "manifestVersion": ast.manifest_version,
-        "defs": [_node_to_dict(d) for d in ast.defs],
-    }
-
-
 def _node_to_dict(node: ASTNode) -> dict[str, Any]:
     d: dict[str, Any] = {"kind": node.kind, "id": node.id}
     if node.name is not None:
         d["name"] = node.name
-    d.update(node.properties)
+    if node.properties:
+        d["properties"] = dict(node.properties)
     if node.children:
         d["children"] = [_node_to_dict(c) for c in node.children]
     return d
@@ -96,6 +94,7 @@ def _meta_to_dict(meta: DomainMeta) -> dict[str, Any]:
             for k in meta.kinds
         ],
         "allowedTypes": meta.allowed_types,
+        "allowedEvents": meta.allowed_events,
         "allowedFunctions": [
             {"name": f.name, "args": f.args, "returns": f.returns, "cost": f.cost}
             for f in meta.allowed_functions

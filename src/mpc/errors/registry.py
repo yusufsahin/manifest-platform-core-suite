@@ -17,6 +17,7 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_META_FUNCTION_NOT_ALLOWED",
     "E_META_BREAKING_CHANGE",
     # Validation
+    "E_VALID",
     "E_VALID_DUPLICATE_DEF",
     "E_VALID_UNRESOLVED_REF",
     "E_VALID_CYCLE_DETECTED",
