@@ -58,6 +58,8 @@ class Transition:
     on: str
     guard: str | None = None
     auth_roles: list[str] = field(default_factory=list)
+    on_enter: list[str] = field(default_factory=list)
+    on_leave: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,7 @@ class WorkflowEngine:
     states: dict[str, FSMState] = field(default_factory=dict)
     transitions: list[Transition] = field(default_factory=list)
     current_state: str = ""
+    initial_state: str = ""
     guard_port: GuardPort | None = None
     auth_port: AuthPort | None = None
 
@@ -107,21 +110,50 @@ class WorkflowEngine:
         transitions: list[Transition] = []
         for tr in node.properties.get("transitions", []):
             if isinstance(tr, dict):
+                on_enter = tr.get("on_enter") or tr.get("onEnter") or []
+                on_leave = tr.get("on_leave") or tr.get("onLeave") or []
+                if isinstance(on_enter, str):
+                    on_enter = [on_enter]
+                if isinstance(on_leave, str):
+                    on_leave = [on_leave]
                 transitions.append(Transition(
                     from_state=str(tr.get("from", "")),
                     to_state=str(tr.get("to", "")),
-                    on=str(tr.get("on", "")),
+                    on=str(tr.get("on", tr.get("to", ""))),
                     guard=tr.get("guard"),
-                    auth_roles=tr.get("authRoles", []),
+                    auth_roles=tr.get("authRoles", tr.get("auth_roles", [])),
+                    on_enter=list(on_enter),
+                    on_leave=list(on_leave),
                 ))
 
         return cls(
             states=states,
             transitions=transitions,
             current_state=initial,
+            initial_state=initial,
             guard_port=guard_port,
             auth_port=auth_port,
         )
+
+    def get_initial_state(self) -> str:
+        """Return the initial state of the workflow."""
+        return self.initial_state
+
+    def is_valid_transition(self, from_state: str, to_state: str) -> bool:
+        """Check if a direct transition from from_state to to_state is allowed."""
+        return any(
+            t.from_state == from_state and t.to_state == to_state
+            for t in self.transitions
+        )
+
+    def get_transition_actions(
+        self, from_state: str, to_state: str
+    ) -> dict[str, list[str]]:
+        """Get on_leave and on_enter action names for the transition."""
+        for t in self.transitions:
+            if t.from_state == from_state and t.to_state == to_state:
+                return {"on_leave": list(t.on_leave), "on_enter": list(t.on_enter)}
+        return {"on_leave": [], "on_enter": []}
 
     def validate(self) -> list[Error]:
         """Validate the workflow structure."""
