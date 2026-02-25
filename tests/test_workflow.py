@@ -40,14 +40,13 @@ class TestWorkflowEngine:
         assert len(errors) == 0
 
     def test_validate_missing_initial(self):
-        node = ASTNode(
-            kind="Workflow", id="broken",
-            properties={"states": ["a", "b"], "transitions": []},
+        # Fixture-style: no "initial" in definition → E_WF_NO_INITIAL
+        engine = WorkflowEngine.from_fixture_input(
+            {"states": ["a", "b"], "transitions": []},
         )
-        engine = WorkflowEngine.from_ast_node(node)
-        engine.current_state = ""
         errors = engine.validate()
         assert any(e.code == "E_WF_NO_INITIAL" for e in errors)
+        assert any("declare an initial state" in e.message for e in errors)
 
     def test_fire_transition(self):
         engine = WorkflowEngine.from_ast_node(_workflow_node())

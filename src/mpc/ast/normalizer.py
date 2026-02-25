@@ -23,7 +23,7 @@ _RESERVED_KEYS = frozenset({"kind", "id", "name", "children", "source"})
 
 def normalize(raw: dict[str, Any]) -> ManifestAST:
     """Convert a raw manifest dict into a canonical ManifestAST."""
-    defs = [_normalize_node(d) for d in raw.get("defs", [])]
+    defs = [_normalize_node(d) for d in raw.get("defs", []) if isinstance(d, dict)]
     return ManifestAST(
         schema_version=raw.get("schemaVersion", 1),
         namespace=raw.get("namespace", ""),

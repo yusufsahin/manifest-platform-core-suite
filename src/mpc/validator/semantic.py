@@ -101,9 +101,22 @@ def _check_workflow_refs(ast: ManifestAST, errors: list[Error]) -> None:
 def _check_workflow_structure(ast: ManifestAST, errors: list[Error]) -> None:
     """Validate workflow structure: initial state, reachability."""
     for node in ast.defs:
+        if getattr(node, "kind", "") != "Workflow":
+            continue
         states = node.properties.get("states")
         transitions = node.properties.get("transitions")
         if not isinstance(states, list) or not isinstance(transitions, list):
+            continue
+        if len(states) == 0:
+            errors.append(
+                Error(
+                    code="E_VALID_INVALID_WORKFLOW",
+                    message=f"Workflow '{node.id}' has no states",
+                    severity="error",
+                    path=f"defs/{node.id}/states",
+                    source=node.source,
+                )
+            )
             continue
 
         initial = node.properties.get("initial")

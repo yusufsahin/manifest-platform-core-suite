@@ -126,11 +126,13 @@ _LOGIC_OPS = frozenset({"and", "or"})
 
 
 def _types_compatible(actual: str, expected: str) -> bool:
-    """Check if *actual* is assignable to *expected*."""
+    """Check if *actual* is assignable to *expected* (supports union types like 'string|array')."""
     if actual == expected:
         return True
     if actual == "any" or expected == "any":
         return True
+    if "|" in expected:
+        return any(_types_compatible(actual, p.strip()) for p in expected.split("|"))
     if expected == "number" and actual in ("int", "float", "number"):
         return True
     if expected in ("int", "float") and actual == "number":

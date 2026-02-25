@@ -141,6 +141,7 @@ else:
 
 ## Belgeler
 
+- [docs/SCOPE.md](docs/SCOPE.md) — Kapsam: PII dışında; redaction yalnızca yapılandırılabilir denyKeys
 - [docs/CONSUMING_APP_MODEL.md](docs/CONSUMING_APP_MODEL.md) — MPC'yi uygulamanıza nasıl entegre edersiniz
 - [docs/MASTER_SPEC.md](docs/MASTER_SPEC.md) — Normative gereksinimler
 - [docs/INTENT_TAXONOMY.md](docs/INTENT_TAXONOMY.md) — Intent kind listesi

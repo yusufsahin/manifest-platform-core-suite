@@ -86,6 +86,63 @@ class WorkflowEngine:
     auth_port: AuthPort | None = None
 
     @classmethod
+    def from_fixture_input(
+        cls,
+        data: dict[str, Any],
+        *,
+        guard_port: GuardPort | None = None,
+        auth_port: AuthPort | None = None,
+    ) -> WorkflowEngine:
+        """Build a WorkflowEngine from conformance fixture input (states, transitions, optional initial, current, event)."""
+        state_names = list(data.get("states") or [])
+        if "initial" in data:
+            iv = data["initial"]
+            initial = str(iv) if iv is not None else ""
+        else:
+            # Fixture: missing "initial" means "workflow definition must declare an initial state"
+            initial = ""
+        finals = set(data.get("finals") or [])
+
+        states: dict[str, FSMState] = {}
+        for s in state_names:
+            if isinstance(s, str):
+                states[s] = FSMState(
+                    name=s,
+                    is_initial=(s == initial),
+                    is_final=(s in finals),
+                )
+
+        transitions: list[Transition] = []
+        for tr in data.get("transitions") or []:
+            if isinstance(tr, dict):
+                on_enter = tr.get("on_enter") or tr.get("onEnter") or []
+                on_leave = tr.get("on_leave") or tr.get("onLeave") or []
+                if isinstance(on_enter, str):
+                    on_enter = [on_enter]
+                if isinstance(on_leave, str):
+                    on_leave = [on_leave]
+                transitions.append(Transition(
+                    from_state=str(tr.get("from", "")),
+                    to_state=str(tr.get("to", "")),
+                    on=str(tr.get("on", tr.get("to", ""))),
+                    guard=tr.get("guard"),
+                    auth_roles=tr.get("authRoles", tr.get("auth_roles", [])),
+                    on_enter=list(on_enter),
+                    on_leave=list(on_leave),
+                ))
+
+        current = data.get("current")
+        current_state = str(current) if current is not None else initial
+        return cls(
+            states=states,
+            transitions=transitions,
+            current_state=current_state,
+            initial_state=initial,
+            guard_port=guard_port,
+            auth_port=auth_port,
+        )
+
+    @classmethod
     def from_ast_node(
         cls,
         node: ASTNode,
@@ -158,10 +215,10 @@ class WorkflowEngine:
     def validate(self) -> list[Error]:
         """Validate the workflow structure."""
         errors: list[Error] = []
-        if not self.current_state:
+        if not self.initial_state:
             errors.append(Error(
                 code="E_WF_NO_INITIAL",
-                message="Workflow has no initial state",
+                message="Workflow definition must declare an initial state",
                 severity="error",
             ))
         for tr in self.transitions:
@@ -246,8 +303,12 @@ class WorkflowEngine:
                 reasons.append(Reason(code="R_WF_GUARD_PASS",
                                       summary=f"Guard passed for '{event}'"))
 
-            # Transition succeeds
+            # Transition succeeds — emit R_WF_GUARD_PASS (trivial when no guard)
             self.current_state = tr.to_state
+            if not any(r.code == "R_WF_GUARD_PASS" for r in reasons):
+                reasons = list(reasons) + [
+                    Reason(code="R_WF_GUARD_PASS", summary="Guard passed"),
+                ]
             return FireResult(
                 new_state=self.current_state,
                 decision=Decision(allow=True, reasons=reasons),
@@ -256,7 +317,7 @@ class WorkflowEngine:
 
         errors.append(Error(
             code="E_WF_UNKNOWN_TRANSITION",
-            message=f"No valid transition for event '{event}' from state '{self.current_state}'",
+            message=f"No transition '{event}' defined from state '{self.current_state}'",
             severity="error",
         ))
         return FireResult(
