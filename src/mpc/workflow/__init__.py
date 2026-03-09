@@ -10,6 +10,7 @@ from mpc.workflow.fsm import (
     GuardPort,
     AuthPort,
 )
+from mpc.workflow.spec import WorkflowSpec, TransitionSpec
 
 __all__ = [
     "WorkflowEngine",
@@ -18,4 +19,6 @@ __all__ = [
     "FireResult",
     "GuardPort",
     "AuthPort",
+    "WorkflowSpec",
+    "TransitionSpec",
 ]

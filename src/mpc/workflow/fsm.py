@@ -4,7 +4,7 @@ Per MASTER_SPEC section 12:
   - Pure FSM: states, transitions, guards
   - Auth checks via AuthPort (optional)
   - Guard checks via GuardPort (optional)
-  - Outputs Decision + Intent + Trace
+  - Outputs Decision (FireResult)
   - Deterministic — same input always produces same output
 """
 from __future__ import annotations
@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from mpc.ast.models import ASTNode
-from mpc.contracts.models import Decision, Error, Intent, Reason
+from mpc.contracts.models import Decision, Error, Reason
+from mpc.workflow.spec import TransitionSpec, WorkflowSpec
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ class GuardPort(Protocol):
     Consuming apps implement this to add custom pre-conditions
     beyond what expressions can evaluate.
     """
-    def check(self, transition: str, context: dict[str, Any]) -> bool: ...
+    def check(self, trigger: str, context: dict[str, Any]) -> bool: ...
 
 
 @runtime_checkable
@@ -85,6 +86,60 @@ class WorkflowEngine:
     guard_port: GuardPort | None = None
     auth_port: AuthPort | None = None
 
+    @staticmethod
+    def _parse_transition(tr: dict[str, Any]) -> Transition:
+        """Parse a transition dict (fixture or AST format) into Transition."""
+        on_enter = tr.get("on_enter") or tr.get("onEnter") or []
+        on_leave = tr.get("on_leave") or tr.get("onLeave") or []
+        if isinstance(on_enter, str):
+            on_enter = [on_enter]
+        if isinstance(on_leave, str):
+            on_leave = [on_leave]
+        return Transition(
+            from_state=str(tr.get("from", "")),
+            to_state=str(tr.get("to", "")),
+            on=str(tr.get("on", tr.get("to", ""))),
+            guard=tr.get("guard"),
+            auth_roles=tr.get("authRoles", tr.get("auth_roles", [])),
+            on_enter=list(on_enter),
+            on_leave=list(on_leave),
+        )
+
+    @classmethod
+    def _build_from_data(
+        cls,
+        state_names: list[str],
+        initial: str,
+        finals: set[str],
+        transitions_data: list[dict[str, Any]],
+        current_state: str,
+        *,
+        guard_port: GuardPort | None = None,
+        auth_port: AuthPort | None = None,
+    ) -> WorkflowEngine:
+        """Build WorkflowEngine from parsed state/transition data."""
+        states: dict[str, FSMState] = {}
+        for s in state_names:
+            if isinstance(s, str):
+                states[s] = FSMState(
+                    name=s,
+                    is_initial=(s == initial),
+                    is_final=(s in finals),
+                )
+        transitions = [
+            cls._parse_transition(tr)
+            for tr in transitions_data
+            if isinstance(tr, dict)
+        ]
+        return cls(
+            states=states,
+            transitions=transitions,
+            current_state=current_state,
+            initial_state=initial,
+            guard_port=guard_port,
+            auth_port=auth_port,
+        )
+
     @classmethod
     def from_fixture_input(
         cls,
@@ -99,47 +154,14 @@ class WorkflowEngine:
             iv = data["initial"]
             initial = str(iv) if iv is not None else ""
         else:
-            # Fixture: missing "initial" means "workflow definition must declare an initial state"
             initial = ""
         finals = set(data.get("finals") or [])
-
-        states: dict[str, FSMState] = {}
-        for s in state_names:
-            if isinstance(s, str):
-                states[s] = FSMState(
-                    name=s,
-                    is_initial=(s == initial),
-                    is_final=(s in finals),
-                )
-
-        transitions: list[Transition] = []
-        for tr in data.get("transitions") or []:
-            if isinstance(tr, dict):
-                on_enter = tr.get("on_enter") or tr.get("onEnter") or []
-                on_leave = tr.get("on_leave") or tr.get("onLeave") or []
-                if isinstance(on_enter, str):
-                    on_enter = [on_enter]
-                if isinstance(on_leave, str):
-                    on_leave = [on_leave]
-                transitions.append(Transition(
-                    from_state=str(tr.get("from", "")),
-                    to_state=str(tr.get("to", "")),
-                    on=str(tr.get("on", tr.get("to", ""))),
-                    guard=tr.get("guard"),
-                    auth_roles=tr.get("authRoles", tr.get("auth_roles", [])),
-                    on_enter=list(on_enter),
-                    on_leave=list(on_leave),
-                ))
-
+        transitions_data = list(data.get("transitions") or [])
         current = data.get("current")
         current_state = str(current) if current is not None else initial
-        return cls(
-            states=states,
-            transitions=transitions,
-            current_state=current_state,
-            initial_state=initial,
-            guard_port=guard_port,
-            auth_port=auth_port,
+        return cls._build_from_data(
+            state_names, initial, finals, transitions_data, current_state,
+            guard_port=guard_port, auth_port=auth_port,
         )
 
     @classmethod
@@ -151,50 +173,39 @@ class WorkflowEngine:
         auth_port: AuthPort | None = None,
     ) -> WorkflowEngine:
         """Build a WorkflowEngine from a workflow ASTNode."""
-        state_names = node.properties.get("states", [])
+        state_names = list(node.properties.get("states", []))
         initial = node.properties.get("initial", state_names[0] if state_names else "")
         finals = set(node.properties.get("finals", []))
-
-        states: dict[str, FSMState] = {}
-        for s in state_names:
-            if isinstance(s, str):
-                states[s] = FSMState(
-                    name=s,
-                    is_initial=(s == initial),
-                    is_final=(s in finals),
-                )
-
-        transitions: list[Transition] = []
-        for tr in node.properties.get("transitions", []):
-            if isinstance(tr, dict):
-                on_enter = tr.get("on_enter") or tr.get("onEnter") or []
-                on_leave = tr.get("on_leave") or tr.get("onLeave") or []
-                if isinstance(on_enter, str):
-                    on_enter = [on_enter]
-                if isinstance(on_leave, str):
-                    on_leave = [on_leave]
-                transitions.append(Transition(
-                    from_state=str(tr.get("from", "")),
-                    to_state=str(tr.get("to", "")),
-                    on=str(tr.get("on", tr.get("to", ""))),
-                    guard=tr.get("guard"),
-                    auth_roles=tr.get("authRoles", tr.get("auth_roles", [])),
-                    on_enter=list(on_enter),
-                    on_leave=list(on_leave),
-                ))
-
-        return cls(
-            states=states,
-            transitions=transitions,
-            current_state=initial,
-            initial_state=initial,
-            guard_port=guard_port,
-            auth_port=auth_port,
+        transitions_data = list(node.properties.get("transitions", []))
+        return cls._build_from_data(
+            state_names, initial, finals, transitions_data, initial,
+            guard_port=guard_port, auth_port=auth_port,
         )
 
     def get_initial_state(self) -> str:
         """Return the initial state of the workflow."""
         return self.initial_state
+
+    def to_spec(self) -> WorkflowSpec:
+        """Export immutable WorkflowSpec for adapter consumption."""
+        transitions = tuple(
+            TransitionSpec(
+                from_state=t.from_state,
+                to_state=t.to_state,
+                on=t.on,
+                guard=t.guard,
+                auth_roles=tuple(t.auth_roles),
+                on_enter=tuple(t.on_enter),
+                on_leave=tuple(t.on_leave),
+            )
+            for t in self.transitions
+        )
+        return WorkflowSpec(
+            states=tuple(self.states.keys()),
+            initial=self.initial_state,
+            finals=frozenset(s.name for s in self.states.values() if s.is_final),
+            transitions=transitions,
+        )
 
     def is_valid_transition(self, from_state: str, to_state: str) -> bool:
         """Check if a direct transition from from_state to to_state is allowed."""
