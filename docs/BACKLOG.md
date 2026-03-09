@@ -10,7 +10,7 @@
 - Conformance fixture added/updated and passes runner
 - Determinism tests added (stable hash)
 - Error/Reason codes registered in ERROR_CODE_REGISTRY.md
-- Trace + Error redaction validated
+- Trace/Error redaction (denyKeys) validated where applicable; **PII is out of scope** (see [SCOPE.md](SCOPE.md))
 - Public Python API + Ports documented
 - Type hints complete (PEP 484)
 - `pip install mpc-<package>` works
@@ -65,7 +65,7 @@
 
 ## EPIC G — Security Hardening
 
-- G1 Redaction engine: denyKeys masking across Trace, Error.details, log outputs
+- G1 Redaction engine: **denyKeys** masking across Trace, Error.details, log outputs (configurable keys only; **PII out of scope** per [SCOPE.md](SCOPE.md))
 - G2 Safe regex policy: maxRegexOps budget + ReDoS detection
 - G3 Plugin governance: trust levels, declarative capabilities, signing
 

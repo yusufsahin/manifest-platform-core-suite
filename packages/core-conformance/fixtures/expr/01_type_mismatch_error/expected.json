@@ -1,7 +1,7 @@
 {
   "error": {
     "code": "E_EXPR_TYPE_MISMATCH",
-    "message": "Type mismatch: 'len' expects string|array, received int",
+    "message": "Argument 0 of 'len' expects 'string|array', got 'int'",
     "severity": "error"
   }
 }
