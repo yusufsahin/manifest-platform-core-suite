@@ -283,6 +283,11 @@ class WorkflowEngine:
                 if not self.auth_port.authorize(actor_id, tr.on):
                     reasons.append(Reason(code="R_WF_AUTH_DENIED",
                                           summary=f"Auth denied for '{event}'"))
+                    errors.append(Error(
+                        code="E_WF_AUTH_DENIED",
+                        message=f"Auth denied for '{event}'",
+                        severity="error",
+                    ))
                     return FireResult(
                         new_state=self.current_state,
                         decision=Decision(allow=False, reasons=reasons),
@@ -295,17 +300,26 @@ class WorkflowEngine:
                     reasons.append(Reason(code="R_WF_AUTH_DENIED",
                                           summary=f"Actor lacks required roles for '{event}'"))
                     errors.append(Error(
-                        code="E_WF_UNKNOWN_TRANSITION",
+                        code="E_WF_AUTH_DENIED",
                         message=f"Actor lacks required roles for '{event}'",
                         severity="error",
                     ))
-                    continue
+                    return FireResult(
+                        new_state=self.current_state,
+                        decision=Decision(allow=False, reasons=reasons),
+                        errors=errors,
+                    )
 
             # GuardPort check
             if tr.guard and self.guard_port is not None:
                 if not self.guard_port.check(tr.on, ctx):
                     reasons.append(Reason(code="R_WF_GUARD_FAIL",
                                           summary=f"Guard failed for '{event}'"))
+                    errors.append(Error(
+                        code="E_WF_GUARD_FAIL",
+                        message=f"Guard failed for '{event}'",
+                        severity="error",
+                    ))
                     return FireResult(
                         new_state=self.current_state,
                         decision=Decision(allow=False, reasons=reasons),

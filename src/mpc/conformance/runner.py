@@ -29,6 +29,7 @@ from mpc.expr import ExprEngine, typecheck as expr_typecheck, evaluate as expr_e
 from mpc.meta.models import DomainMeta, FunctionDef
 from mpc.overlay.engine import OverlayEngine
 from mpc.policy.engine import PolicyEngine
+from mpc.workflow import GuardPort
 from mpc.workflow.fsm import WorkflowEngine
 
 
@@ -59,6 +60,13 @@ class FixtureResult:
 
 
 CategoryHandler = Callable[["ConformanceRunner", FixtureContext], dict[str, Any]]
+
+
+class _FailGuard:
+    """GuardPort that always returns False. Used by guard_fail conformance fixtures."""
+
+    def check(self, trigger: str, context: dict[str, Any]) -> bool:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +297,13 @@ class ConformanceRunner:
     def _handle_workflow(self, ctx: FixtureContext) -> dict[str, Any]:
         """Run workflow fixture: build FSM from input, validate or fire(event), return decision or error."""
         data = ctx.input_data
-        engine = WorkflowEngine.from_fixture_input(data)
+        meta = ctx.meta
+        guard_port: GuardPort | None = None
+        if meta.get("guard_behavior") == "fail":
+            guard_port = _FailGuard()
+        engine = WorkflowEngine.from_fixture_input(
+            data, guard_port=guard_port, auth_port=None
+        )
         event = data.get("event")
         if event is None:
             errors = engine.validate()
@@ -303,7 +317,15 @@ class ConformanceRunner:
                     }
                 }
             return {"allow": True, "reasons": []}
-        result = engine.fire(str(event))
+        actor_roles = data.get("actor_roles") or data.get("actorRoles")
+        actor_id = data.get("actor_id") or data.get("actorId")
+        context = data.get("context") or {}
+        result = engine.fire(
+            str(event),
+            actor_roles=actor_roles,
+            actor_id=actor_id,
+            context=context,
+        )
         if result.errors:
             e = result.errors[0]
             return {

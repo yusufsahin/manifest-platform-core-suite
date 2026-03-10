@@ -1,0 +1,9 @@
+{
+  "states": ["draft", "review", "published"],
+  "transitions": [
+    { "from": "draft", "on": "submit", "to": "review" },
+    { "from": "review", "on": "publish", "to": "published", "guard": "ctx.ok" }
+  ],
+  "current": "review",
+  "event": "publish"
+}

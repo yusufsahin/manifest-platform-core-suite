@@ -35,6 +35,8 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_WF_NO_INITIAL",
     "E_WF_UNKNOWN_STATE",
     "E_WF_UNKNOWN_TRANSITION",
+    "E_WF_GUARD_FAIL",
+    "E_WF_AUTH_DENIED",
     # Policy
     "E_POLICY_INVALID_MATCHER",
     "E_POLICY_INVALID_TEMPLATE",
