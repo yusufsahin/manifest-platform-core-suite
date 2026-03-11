@@ -105,6 +105,7 @@ class ConformanceRunner:
         self._handlers["acl"] = ConformanceRunner._handle_acl
         self._handlers["policy"] = ConformanceRunner._handle_policy
         self._handlers["compose"] = ConformanceRunner._handle_compose
+        self._handlers["evaluate_integration"] = ConformanceRunner._handle_evaluate_integration
         self._handlers["overlay"] = ConformanceRunner._handle_overlay
         self._handlers["governance"] = ConformanceRunner._handle_governance
 
@@ -495,6 +496,87 @@ class ConformanceRunner:
                 for r in d.get("reasons", [])
             ]
             decisions.append(Decision(allow=allow, reasons=reasons))
+        result = compose_decisions(decisions, strategy=strategy)
+        out: dict[str, Any] = {
+            "allow": result.allow,
+            "reasons": [{"code": r.code} for r in result.reasons],
+        }
+        if result.intents:
+            out["intents"] = [
+                {"kind": i.kind, "target": i.target} for i in result.intents
+            ]
+        return out
+
+    def _handle_evaluate_integration(self, ctx: FixtureContext) -> dict[str, Any]:
+        """Policy + ACL + compose end-to-end (manifestpy evaluate flow)."""
+        data = ctx.input_data
+        event = data.get("event")
+        if event is None:
+            return {
+                "error": {
+                    "code": "E_PARSE_SYNTAX",
+                    "message": "Missing 'event' in input",
+                    "severity": "error",
+                }
+            }
+        flat_event = _flatten_dotted_keys(event)
+        policies = data.get("policies") or []
+        rules = data.get("rules") or []
+        strategy = data.get("strategy", "deny-wins")
+
+        defs: list[ASTNode] = []
+        for p in policies:
+            pid = p.get("id", "p")
+            props = dict(p)
+            props.pop("id", None)
+            defs.append(ASTNode(kind="Policy", id=pid, properties=props))
+        for i, r in enumerate(rules):
+            role = r.get("role", "")
+            actions = r.get("actions", [])
+            for a in actions:
+                defs.append(
+                    ASTNode(
+                        kind="ACL",
+                        id=f"r{i}_{a}",
+                        properties={
+                            "action": a,
+                            "roles": [role],
+                            "effect": "allow",
+                            "resource": r.get("resource", "*"),
+                        },
+                    )
+                )
+        ast = ManifestAST(
+            schema_version=1, namespace="", name="", manifest_version="1", defs=defs
+        )
+        meta = DomainMeta()
+        policy_engine = PolicyEngine(ast=ast, meta=meta)
+        acl_engine = ACLEngine(ast=ast)
+        policy_result = policy_engine.evaluate(flat_event)
+        actor = event.get("actor") or {}
+        actor_roles = actor.get("roles", []) if isinstance(actor, dict) else []
+        obj = event.get("object") or {}
+        resource = (
+            obj.get("type", "entity") if isinstance(obj, dict) else "entity"
+        )
+        action = event.get("action")
+        if action is None:
+            action = (event.get("name") or "unknown").split(".")[-1]
+        acl_result = acl_engine.check(
+            action, resource, actor_roles=actor_roles
+        )
+        decisions = [
+            Decision(
+                allow=policy_result.allow,
+                reasons=policy_result.reasons,
+                intents=policy_result.intents,
+            ),
+            Decision(
+                allow=acl_result.allowed,
+                reasons=acl_result.reasons,
+                intents=acl_result.intents,
+            ),
+        ]
         result = compose_decisions(decisions, strategy=strategy)
         out: dict[str, Any] = {
             "allow": result.allow,
