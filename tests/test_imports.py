@@ -1,9 +1,8 @@
 """Tests for import resolver (E3) — alias, semver, collision, cycle detection."""
 import pytest
 
-from mpc.ast.models import ASTNode, ManifestAST
-from mpc.imports import ImportResolver, ImportResult, ImportSpec
-from mpc.imports.resolver import check_semver
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.tooling.imports.resolver import ImportResolver, ImportResult, ImportSpec, check_semver
 
 
 def _manifest(ns: str, *defs: ASTNode) -> ManifestAST:

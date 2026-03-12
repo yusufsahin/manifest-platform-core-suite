@@ -1,6 +1,7 @@
-from mpc.ast import ASTNode, ManifestAST
-from mpc.meta import DomainMeta, KindDef, FunctionDef
-from mpc.validator import validate_structural, validate_semantic
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.kernel.meta.models import DomainMeta, KindDef, FunctionDef
+from mpc.tooling.validator.structural import validate_structural
+from mpc.tooling.validator.semantic import validate_semantic
 
 
 def _ast(*defs: ASTNode) -> ManifestAST:
@@ -221,7 +222,7 @@ class TestSemanticValidator:
         assert len(cycle_errors) == 1
 
     def test_cycle_detection_includes_source_map(self):
-        from mpc.contracts.models import SourceMap
+        from mpc.kernel.contracts.models import SourceMap
         src = SourceMap(line=5, col=1)
         ast = _ast(
             ASTNode(kind="Policy", id="a", properties={"extends": "b"}, source=src),

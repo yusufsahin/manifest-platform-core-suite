@@ -1,6 +1,6 @@
-from mpc.ast import ASTNode, ManifestAST
-from mpc.meta import DomainMeta, KindDef, FunctionDef
-from mpc.registry import compile_registry
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.kernel.meta.models import DomainMeta, KindDef, FunctionDef
+from mpc.tooling.registry.compiler import compile_registry
 
 
 def _simple_ast() -> ManifestAST:

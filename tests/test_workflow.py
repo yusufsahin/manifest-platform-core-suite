@@ -2,8 +2,8 @@
 import pytest
 from typing import Any
 
-from mpc.ast.models import ASTNode
-from mpc.workflow import WorkflowEngine, FSMState, Transition, FireResult, GuardPort, AuthPort
+from mpc.kernel.ast.models import ASTNode
+from mpc.features.workflow.fsm import WorkflowEngine, FSMState, Transition, FireResult, GuardPort, AuthPort
 
 
 def _workflow_node() -> ASTNode:

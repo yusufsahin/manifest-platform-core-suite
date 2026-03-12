@@ -1,4 +1,4 @@
-from mpc.ast import ManifestAST, ASTNode, normalize
+from mpc.kernel.ast import ManifestAST, ASTNode, normalize
 
 
 class TestASTModel:

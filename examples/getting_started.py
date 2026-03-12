@@ -9,12 +9,13 @@ This example demonstrates:
 6. Running a workflow
 7. Checking ACL rules
 """
-from mpc.meta.models import DomainMeta, KindDef, FunctionDef
-from mpc.parser import parse
-from mpc.validator import validate_structural, validate_semantic
-from mpc.registry.compiler import compile_registry
-from mpc.expr import ExprEngine
-from mpc.workflow import WorkflowEngine
+from mpc.kernel.meta.models import DomainMeta, KindDef, FunctionDef
+from mpc.kernel.parser import parse
+from mpc.tooling.validator.structural import validate_structural
+from mpc.tooling.validator.semantic import validate_semantic
+from mpc.tooling.registry.compiler import compile_registry
+from mpc.features.expr.engine import ExprEngine
+from mpc.features.workflow.fsm import WorkflowEngine
 
 # 1. Define your domain
 meta = DomainMeta(

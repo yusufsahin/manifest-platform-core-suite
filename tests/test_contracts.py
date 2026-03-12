@@ -1,4 +1,4 @@
-from mpc.contracts import (
+from mpc.kernel.contracts import (
     Actor, Object, EventEnvelope,
     SourceSpan, SourceMap, Error,
     Intent, Reason, Message, Decision,

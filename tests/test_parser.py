@@ -7,8 +7,8 @@ import pytest
 import json
 import textwrap
 
-from mpc.parser import parse, parse_json, parse_yaml, parse_dsl
-from mpc.errors import MPCError
+from mpc.kernel.parser import parse, parse_json, parse_yaml, parse_dsl
+from mpc.kernel.errors import MPCError
 
 
 # ---------------------------------------------------------------------------

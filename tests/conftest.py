@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mpc.conformance.runner import ConformanceRunner
+from mpc.tooling.conformance.runner import ConformanceRunner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES_ROOT = REPO_ROOT / "packages" / "core-conformance" / "fixtures"

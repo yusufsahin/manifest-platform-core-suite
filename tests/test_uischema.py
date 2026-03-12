@@ -1,9 +1,9 @@
 """Tests for UI schema generator (D5)."""
 import pytest
 
-from mpc.ast.models import ASTNode, ManifestAST
-from mpc.meta.models import DomainMeta, KindDef
-from mpc.uischema import generate_ui_schema, UISchemaResult
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.kernel.meta.models import DomainMeta, KindDef
+from mpc.tooling.uischema.generator import generate_ui_schema, UISchemaResult
 
 
 def _meta() -> DomainMeta:

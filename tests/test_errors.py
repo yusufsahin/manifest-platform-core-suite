@@ -1,6 +1,6 @@
 import pytest
 
-from mpc.errors import (
+from mpc.kernel.errors import (
     ERROR_CODES,
     REASON_CODES,
     INTENT_KINDS,
@@ -94,6 +94,6 @@ class TestExceptions:
 
     def test_mpc_validation_error_uses_registered_code(self):
         """BUG-8 regression: MPCValidationError.code must be in ERROR_CODES."""
-        from mpc.errors import MPCValidationError
+        from mpc.kernel.errors import MPCValidationError
         exc = MPCValidationError([])
         assert exc.code in ERROR_CODES

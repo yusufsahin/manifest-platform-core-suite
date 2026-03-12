@@ -1,7 +1,7 @@
 """Tests for redaction engine (Epic G1) — denyKeys masking."""
 import pytest
 
-from mpc.redaction import RedactionEngine, RedactionConfig
+from mpc.features.redaction.engine import RedactionEngine, RedactionConfig
 
 
 class TestRedactionEngine:

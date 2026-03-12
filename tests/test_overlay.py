@@ -1,8 +1,8 @@
 """Tests for overlay engine (E1/E2) — ops, stable selectors, conflict detection."""
 import pytest
 
-from mpc.ast.models import ASTNode, ManifestAST
-from mpc.overlay import OverlayEngine, OverlayResult, Selector
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.features.overlay.engine import OverlayEngine, OverlayResult, Selector
 
 
 def _base_ast(*defs: ASTNode) -> ManifestAST:

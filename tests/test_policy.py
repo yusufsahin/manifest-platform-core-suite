@@ -1,7 +1,7 @@
 """Tests for the policy engine."""
-from mpc.ast import ASTNode, ManifestAST
-from mpc.meta import DomainMeta, KindDef
-from mpc.policy import PolicyEngine
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.kernel.meta.models import DomainMeta, KindDef
+from mpc.features.policy.engine import PolicyEngine
 
 
 def _manifest(*defs: ASTNode) -> ManifestAST:

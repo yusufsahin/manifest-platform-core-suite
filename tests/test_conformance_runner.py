@@ -7,7 +7,7 @@ Security (PII) fixtures are out of scope and removed; see docs/SCOPE.md.
 import pytest
 from pathlib import Path
 
-from mpc.conformance.runner import ConformanceRunner
+from mpc.tooling.conformance.runner import ConformanceRunner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES_ROOT = REPO_ROOT / "packages" / "core-conformance" / "fixtures"

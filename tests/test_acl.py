@@ -1,8 +1,8 @@
 """Tests for ACL engine (D4) — RBAC, ABAC, maskField intents, role hierarchy."""
 import pytest
 
-from mpc.ast.models import ASTNode, ManifestAST
-from mpc.acl import ACLEngine, ACLResult
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.features.acl.engine import ACLEngine, ACLResult
 
 
 def _acl_ast(*rules: ASTNode) -> ManifestAST:
