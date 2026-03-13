@@ -85,6 +85,21 @@ class WorkflowEngine:
     initial_state: str = ""
     guard_port: GuardPort | None = None
     auth_port: AuthPort | None = None
+    # Index: (from_state, event) → list[Transition] for O(1) lookup in fire()
+    _transition_index: dict[tuple[str, str], list[Transition]] = field(
+        default_factory=dict, init=False, repr=False
+    )
+
+    def __post_init__(self) -> None:
+        self._rebuild_transition_index()
+
+    def _rebuild_transition_index(self) -> None:
+        """Build the (from_state, event) → [Transition] lookup index."""
+        idx: dict[tuple[str, str], list[Transition]] = {}
+        for tr in self.transitions:
+            key = (tr.from_state, tr.on)
+            idx.setdefault(key, []).append(tr)
+        self._transition_index = idx
 
     @staticmethod
     def _parse_transition(tr: dict[str, Any]) -> Transition:
@@ -250,11 +265,17 @@ class WorkflowEngine:
     def available_transitions(
         self, *, actor_roles: list[str] | None = None
     ) -> list[Transition]:
-        """Return transitions available from the current state."""
+        """Return transitions available from the current state.
+
+        Uses the transition index to find candidates in O(events) rather than O(all transitions).
+        """
         result: list[Transition] = []
-        for tr in self.transitions:
-            if tr.from_state != self.current_state:
-                continue
+        # Collect all transitions from current_state via the index
+        candidates: list[Transition] = []
+        for key, trs in self._transition_index.items():
+            if key[0] == self.current_state:
+                candidates.extend(trs)
+        for tr in candidates:
             if tr.auth_roles and actor_roles is not None:
                 if not set(tr.auth_roles) & set(actor_roles):
                     continue
@@ -274,13 +295,26 @@ class WorkflowEngine:
         errors: list[Error] = []
         ctx = context or {}
 
-        for tr in self.transitions:
-            if tr.from_state != self.current_state or tr.on != event:
-                continue
+        # O(1) lookup via transition index; fall back to linear scan if index is stale
+        candidates = self._transition_index.get((self.current_state, event), [])
+        for tr in candidates:
 
             # AuthPort check
             if self.auth_port is not None and actor_id is not None:
-                if not self.auth_port.authorize(actor_id, tr.on):
+                try:
+                    auth_allowed = self.auth_port.authorize(actor_id, tr.on)
+                except Exception as exc:
+                    errors.append(Error(
+                        code="E_WF_AUTH_DENIED",
+                        message=f"AuthPort raised an exception for '{event}': {exc}",
+                        severity="error",
+                    ))
+                    return FireResult(
+                        new_state=self.current_state,
+                        decision=Decision(allow=False, reasons=reasons),
+                        errors=errors,
+                    )
+                if not auth_allowed:
                     reasons.append(Reason(code="R_WF_AUTH_DENIED",
                                           summary=f"Auth denied for '{event}'"))
                     errors.append(Error(
@@ -312,7 +346,20 @@ class WorkflowEngine:
 
             # GuardPort check
             if tr.guard and self.guard_port is not None:
-                if not self.guard_port.check(tr.on, ctx):
+                try:
+                    guard_passed = self.guard_port.check(tr.on, ctx)
+                except Exception as exc:
+                    errors.append(Error(
+                        code="E_WF_GUARD_FAIL",
+                        message=f"GuardPort raised an exception for '{event}': {exc}",
+                        severity="error",
+                    ))
+                    return FireResult(
+                        new_state=self.current_state,
+                        decision=Decision(allow=False, reasons=reasons),
+                        errors=errors,
+                    )
+                if not guard_passed:
                     reasons.append(Reason(code="R_WF_GUARD_FAIL",
                                           summary=f"Guard failed for '{event}'"))
                     errors.append(Error(

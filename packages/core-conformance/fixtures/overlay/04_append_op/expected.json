@@ -1,0 +1,6 @@
+{
+  "attributes": { "tags": ["read", "write", "delete"], "ttl": 3600 },
+  "id": "p1",
+  "kind": "Policy",
+  "namespace": "acme"
+}

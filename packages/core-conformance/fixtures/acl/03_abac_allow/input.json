@@ -1,0 +1,19 @@
+{
+  "action": "read",
+  "actor": {
+    "id": "u1",
+    "roles": [],
+    "type": "user",
+    "attrs": { "department": "engineering", "clearance": "high" }
+  },
+  "object": { "id": "doc-secret", "type": "document" },
+  "rules": [
+    {
+      "id": "eng_read",
+      "action": "read",
+      "resource": "*",
+      "condition": { "department": "engineering" },
+      "effect": "allow"
+    }
+  ]
+}

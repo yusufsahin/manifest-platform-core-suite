@@ -17,7 +17,7 @@ from mpc.contracts.models import Error, Intent, Reason
 
 @dataclass(frozen=True)
 class ACLResult:
-    allowed: bool
+    allow: bool
     reasons: list[Reason] = field(default_factory=list)
     intents: list[Intent] = field(default_factory=list)
     errors: list[Error] = field(default_factory=list)
@@ -68,7 +68,7 @@ class ACLEngine:
                             code="R_ACL_DENY_ROLE",
                             summary=f"Denied by ACL rule '{rule.id}'",
                         ))
-                        return ACLResult(allowed=False, reasons=reasons,
+                        return ACLResult(allow=False, reasons=reasons,
                                          intents=intents, errors=errors)
                     reasons.append(Reason(
                         code="R_ACL_ALLOW_ROLE",
@@ -76,7 +76,7 @@ class ACLEngine:
                     ))
                     mask_intents = _collect_mask_intents(rule)
                     intents.extend(mask_intents)
-                    return ACLResult(allowed=True, reasons=reasons,
+                    return ACLResult(allow=True, reasons=reasons,
                                      intents=intents, errors=errors)
 
             # ABAC path
@@ -89,7 +89,7 @@ class ACLEngine:
                             code="R_ACL_DENY_ABAC",
                             summary=f"Denied by ABAC rule '{rule.id}'",
                         ))
-                        return ACLResult(allowed=False, reasons=reasons,
+                        return ACLResult(allow=False, reasons=reasons,
                                          intents=intents, errors=errors)
                     reasons.append(Reason(
                         code="R_ACL_ALLOW_ABAC",
@@ -97,14 +97,14 @@ class ACLEngine:
                     ))
                     mask_intents = _collect_mask_intents(rule)
                     intents.extend(mask_intents)
-                    return ACLResult(allowed=True, reasons=reasons,
+                    return ACLResult(allow=True, reasons=reasons,
                                      intents=intents, errors=errors)
 
         reasons.append(Reason(
             code="R_ACL_DENY_ROLE",
             summary=f"No matching ACL rule for action='{action}', resource='{resource}'",
         ))
-        return ACLResult(allowed=False, reasons=reasons, intents=intents, errors=errors)
+        return ACLResult(allow=False, reasons=reasons, intents=intents, errors=errors)
 
     def _expand_roles(self, roles: set[str]) -> set[str]:
         """Expand roles using the role hierarchy (parent inherits child roles)."""

@@ -1,0 +1,6 @@
+{
+  "clock": "2026-02-22T00:00:00+03:00",
+  "preset": "preset-generic-full",
+  "limits": { "maxRegexOps": 0 },
+  "notes": "Regex budget is zero; any regex call must raise E_EXPR_REGEX_LIMIT"
+}

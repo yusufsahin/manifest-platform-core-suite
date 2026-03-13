@@ -1,0 +1,5 @@
+{
+  "expr": { "fn": "regex", "args": [{ "lit": "hello world" }, { "lit": "world$" }] },
+  "typeEnv": {},
+  "functions": ["regex"]
+}

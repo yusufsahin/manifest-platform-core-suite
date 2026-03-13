@@ -91,9 +91,24 @@ class OverlayEngine:
             matched_keys = self._find_matches(selector, base_by_key)
 
             if op == "remove":
-                for key in matched_keys:
-                    node = base_by_key.pop(key)
-                    applied.append(f"remove:{node.id}")
+                if path:
+                    # Remove a specific path within matched nodes' properties
+                    parts = path.split(".")
+                    for key in matched_keys:
+                        existing = base_by_key[key]
+                        new_props = dict(existing.properties)
+                        _del_nested(new_props, parts)
+                        base_by_key[key] = ASTNode(
+                            kind=existing.kind, id=existing.id,
+                            name=existing.name, properties=new_props,
+                            children=existing.children, source=existing.source,
+                        )
+                        applied.append(f"remove-path:{existing.id}:{path}")
+                else:
+                    # Remove the entire matched node from the AST
+                    for key in matched_keys:
+                        node = base_by_key.pop(key)
+                        applied.append(f"remove:{node.id}")
                 continue
 
             if not matched_keys and op not in ("replace", "append"):
@@ -171,19 +186,22 @@ class OverlayEngine:
             elif op == "append":
                 for key in matched_keys:
                     existing = base_by_key[key]
-                    new_props = dict(existing.properties)
-                    for k, v in values.items():
-                        existing_val = new_props.get(k)
-                        if isinstance(existing_val, list) and isinstance(v, list):
-                            new_props[k] = existing_val + v
-                        else:
-                            new_props[k] = v
-                    base_by_key[key] = ASTNode(
-                        kind=existing.kind, id=existing.id,
-                        name=existing.name, properties=new_props,
-                        children=existing.children, source=existing.source,
-                    )
-                    applied.append(f"append:{existing.id}")
+                    if path:
+                        _apply_path_op(base_by_key, key, existing, path, values, op, applied)
+                    else:
+                        new_props = dict(existing.properties)
+                        for k, v in values.items():
+                            existing_val = new_props.get(k)
+                            if isinstance(existing_val, list) and isinstance(v, list):
+                                new_props[k] = existing_val + v
+                            else:
+                                new_props[k] = v
+                        base_by_key[key] = ASTNode(
+                            kind=existing.kind, id=existing.id,
+                            name=existing.name, properties=new_props,
+                            children=existing.children, source=existing.source,
+                        )
+                        applied.append(f"append:{existing.id}")
 
                 if not matched_keys and selector and selector.id:
                     kind = odef.properties.get("kind", selector.kind or "Unknown")
@@ -254,6 +272,13 @@ def _apply_path_op(
             _set_nested(new_props, parts, {**current, **values})
         else:
             _set_nested(new_props, parts, values)
+    elif op == "append":
+        val = values.get(path, next(iter(values.values())) if values else None)
+        current = _get_nested(new_props, parts)
+        if isinstance(current, list) and isinstance(val, list):
+            _set_nested(new_props, parts, current + val)
+        else:
+            _set_nested(new_props, parts, val)
 
     base_by_key[key] = ASTNode(
         kind=existing.kind, id=existing.id,
@@ -281,6 +306,16 @@ def _get_nested(obj: dict[str, Any], parts: list[str]) -> Any:
         else:
             return None
     return current
+
+
+def _del_nested(obj: dict[str, Any], parts: list[str]) -> None:
+    """Delete the key at the end of *parts* from a nested dict. No-op if missing."""
+    for p in parts[:-1]:
+        if not isinstance(obj, dict) or p not in obj:
+            return
+        obj = obj[p]
+    if isinstance(obj, dict):
+        obj.pop(parts[-1], None)
 
 
 def _set_nested(obj: dict[str, Any], parts: list[str], value: Any) -> None:

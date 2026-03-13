@@ -8,7 +8,19 @@
   "properties": {
     "kind": {
       "type": "string",
-      "minLength": 1,
+      "enum": [
+        "maskField",
+        "notify",
+        "revoke",
+        "grantRole",
+        "audit",
+        "transform",
+        "tag",
+        "rateLimit",
+        "redirect",
+        "publish",
+        "rollback"
+      ],
       "description": "Intent kind. MUST be a value defined in INTENT_TAXONOMY.md. Unknown kinds fail conformance."
     },
     "target": {

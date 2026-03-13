@@ -1,0 +1,15 @@
+{
+  "base": {
+    "id": "p1",
+    "kind": "Policy",
+    "namespace": "acme",
+    "attributes": { "effect": "allow", "ttl": 3600, "owner": "team-a" }
+  },
+  "overlays": [
+    {
+      "selector": { "id": "p1", "kind": "Policy", "namespace": "acme" },
+      "op": "remove",
+      "path": "attributes.owner"
+    }
+  ]
+}

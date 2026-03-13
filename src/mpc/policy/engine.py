@@ -76,14 +76,31 @@ class PolicyEngine:
 
 
 def _matches_event(policy: ASTNode, event: dict[str, Any]) -> bool:
-    """Check if a policy definition's matcher matches the event."""
+    """Check if a policy definition's matcher matches the event.
+
+    Supports dotted key paths (e.g. "object.type") to match nested event fields.
+    """
     match = policy.properties.get("match")
     if match is None:
         return True
     if not isinstance(match, dict):
         return True
     for key, expected in match.items():
-        actual = event.get(key)
+        actual = _get_dotted(event, key)
         if actual != expected:
             return False
     return True
+
+
+def _get_dotted(d: dict[str, Any], key: str) -> Any:
+    """Resolve a dotted key path like 'object.type' from a nested dict.
+
+    Returns None if any segment is missing or the container is not a dict.
+    """
+    parts = key.split(".")
+    current: Any = d
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current

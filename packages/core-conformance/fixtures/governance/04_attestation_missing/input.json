@@ -1,0 +1,9 @@
+{
+  "enterpriseMode": true,
+  "requireAttestation": true,
+  "artifact": {
+    "provenance": { "astHash": "abc123" },
+    "signature": "SIG_valid_payload",
+    "attestations": []
+  }
+}

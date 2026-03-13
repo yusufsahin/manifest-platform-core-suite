@@ -276,3 +276,28 @@ class TestSemanticValidator:
         )
         errors = validate_semantic(ast)
         assert errors == []
+
+    def test_no_errors_empty_defs(self):
+        ast = _ast()
+        errors = validate_semantic(ast)
+        assert errors == []
+
+    def test_namespace_conflict_message_includes_namespace(self):
+        ast = _ast(
+            ASTNode(kind="Policy", id="x"),
+            ASTNode(kind="ACL", id="x"),
+        )
+        errors = validate_semantic(ast)
+        ns_errors = [e for e in errors if e.code == "E_VALID_NAMESPACE_CONFLICT"]
+        assert len(ns_errors) == 1
+        assert "test" in ns_errors[0].message
+
+    def test_extends_cycle_path_in_error(self):
+        ast = _ast(
+            ASTNode(kind="Policy", id="a", properties={"extends": "b"}),
+            ASTNode(kind="Policy", id="b", properties={"extends": "a"}),
+        )
+        errors = validate_semantic(ast)
+        cycle_errors = [e for e in errors if e.code == "E_VALID_CYCLE_DETECTED"]
+        assert len(cycle_errors) == 1
+        assert cycle_errors[0].path is not None

@@ -30,6 +30,8 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_EXPR_LIMIT_STEPS",
     "E_EXPR_LIMIT_TIME",
     "E_EXPR_REGEX_LIMIT",
+    "E_EXPR_DIV_BY_ZERO",
+    "E_EXPR_INVALID_REGEX",
     "E_BUDGET_EXCEEDED",
     # Workflow
     "E_WF_NO_INITIAL",

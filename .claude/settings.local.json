@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc:*)",
+      "Bash(grep -l \"ManifestEngine\\\\|class.*Engine\" src/mpc/*/*.py)",
+      "Bash(wc -l /c/source/core-suite/manifest-platform-core-suite/.claude/worktrees/goofy-dirac/src/mpc/**/*.py)",
+      "Bash(python -m pytest tests/test_compose.py tests/test_acl.py tests/test_contracts.py -x -q)",
+      "Bash(python -m pytest -x -q)",
+      "Bash(python -m pytest tests/test_expr.py::TestEvaluate::test_ir_binop_divide_by_zero -v)",
+      "Bash(python -m pytest tests/test_conformance_runner.py -x -q)",
+      "Bash(python -m pytest -q)",
+      "Bash(python -m pytest tests/test_workflow.py tests/test_registry.py -x -q)",
+      "Bash(python -m pytest tests/test_redaction.py tests/test_workflow.py tests/test_registry.py -x -q)",
+      "Bash(python -m pytest tests/test_governance.py tests/test_new_features.py -x -q)",
+      "Bash(python -m pytest --tb=no -q)"
+    ]
+  }
+}

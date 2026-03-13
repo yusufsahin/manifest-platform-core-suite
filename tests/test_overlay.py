@@ -106,6 +106,43 @@ class TestOverlayOps:
         result = OverlayEngine(base=base).apply(overlay)
         assert any(e.code == "E_OVERLAY_UNKNOWN_SELECTOR" for e in result.conflicts)
 
+    def test_remove_op_path(self):
+        base = _base_ast(ASTNode(
+            kind="Policy", id="p1",
+            properties={"attributes": {"effect": "allow", "ttl": 3600, "owner": "team-a"}},
+        ))
+        overlay = _overlay_ast(ASTNode(
+            kind="Overlay", id="o1",
+            properties={
+                "selector": {"id": "p1", "kind": "Policy"},
+                "op": "remove",
+                "path": "attributes.owner",
+            },
+        ))
+        result = OverlayEngine(base=base).apply(overlay)
+        p1 = next(d for d in result.ast.defs if d.id == "p1")
+        assert "owner" not in p1.properties["attributes"]
+        assert p1.properties["attributes"]["effect"] == "allow"
+        assert p1.properties["attributes"]["ttl"] == 3600
+
+    def test_append_op_path(self):
+        base = _base_ast(ASTNode(
+            kind="Entity", id="e1",
+            properties={"meta": {"tags": ["a", "b"]}},
+        ))
+        overlay = _overlay_ast(ASTNode(
+            kind="Overlay", id="o1",
+            properties={
+                "target": "e1",
+                "op": "append",
+                "path": "meta.tags",
+                "values": {"meta.tags": ["c"]},
+            },
+        ))
+        result = OverlayEngine(base=base).apply(overlay)
+        e1 = next(d for d in result.ast.defs if d.id == "e1")
+        assert e1.properties["meta"]["tags"] == ["a", "b", "c"]
+
     def test_deep_merge(self):
         base = _base_ast(ASTNode(
             kind="Config", id="c1",

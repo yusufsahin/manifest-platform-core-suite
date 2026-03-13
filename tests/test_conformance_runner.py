@@ -212,6 +212,50 @@ class TestGovernanceConformance:
 
 
 # ---------------------------------------------------------------------------
+# evaluate_integration
+# ---------------------------------------------------------------------------
+
+class TestEvaluateIntegrationConformance:
+    @pytest.fixture(autouse=True)
+    def _setup(self, runner: ConformanceRunner):
+        self.runner = runner
+
+    @pytest.mark.parametrize(
+        "fixture_name",
+        [d.name for d in sorted((FIXTURES_ROOT / "evaluate_integration").iterdir()) if d.is_dir()],
+    )
+    def test_fixture(self, fixture_name: str):
+        result = self.runner.run_fixture(FIXTURES_ROOT / "evaluate_integration" / fixture_name)
+        assert result.passed, (
+            f"{result.fixture} FAILED\n"
+            + "\n".join(result.diff)
+            + "\n".join(result.violations)
+        )
+
+
+# ---------------------------------------------------------------------------
+# validator
+# ---------------------------------------------------------------------------
+
+class TestValidatorConformance:
+    @pytest.fixture(autouse=True)
+    def _setup(self, runner: ConformanceRunner):
+        self.runner = runner
+
+    @pytest.mark.parametrize(
+        "fixture_name",
+        [d.name for d in sorted((FIXTURES_ROOT / "validator").iterdir()) if d.is_dir()],
+    )
+    def test_fixture(self, fixture_name: str):
+        result = self.runner.run_fixture(FIXTURES_ROOT / "validator" / fixture_name)
+        assert result.passed, (
+            f"{result.fixture} FAILED\n"
+            + "\n".join(result.diff)
+            + "\n".join(result.violations)
+        )
+
+
+# ---------------------------------------------------------------------------
 # all categories — smoke test
 # ---------------------------------------------------------------------------
 

@@ -1,0 +1,16 @@
+{
+  "base": {
+    "id": "p1",
+    "kind": "Policy",
+    "namespace": "acme",
+    "attributes": { "tags": ["read"], "ttl": 3600 }
+  },
+  "overlays": [
+    {
+      "selector": { "id": "p1", "kind": "Policy", "namespace": "acme" },
+      "op": "append",
+      "path": "attributes.tags",
+      "value": ["write", "delete"]
+    }
+  ]
+}

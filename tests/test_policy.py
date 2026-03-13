@@ -79,3 +79,52 @@ class TestPolicyEngine:
         result = engine.evaluate({"kind": "read"})
         assert len(result.intents) == 1
         assert result.intents[0].kind == "audit"
+
+    def test_allow_without_intents(self):
+        ast = _manifest(
+            ASTNode(kind="Policy", id="p1", properties={"effect": "allow"})
+        )
+        engine = PolicyEngine(ast=ast, meta=_meta())
+        result = engine.evaluate({"kind": "read"})
+        assert result.allow is True
+        assert result.intents == []
+
+    def test_no_matching_policy(self):
+        ast = _manifest(
+            ASTNode(kind="Policy", id="p1", properties={
+                "effect": "deny",
+                "match": {"kind": "delete"},
+            })
+        )
+        engine = PolicyEngine(ast=ast, meta=_meta())
+        result = engine.evaluate({"kind": "read"})
+        assert result.allow is True
+        assert result.reasons == []
+
+    def test_multiple_matching_policies_deny_wins(self):
+        ast = _manifest(
+            ASTNode(kind="Policy", id="p1", properties={"effect": "allow"}),
+            ASTNode(kind="Policy", id="p2", properties={"effect": "deny"}),
+            ASTNode(kind="Policy", id="p3", properties={"effect": "allow"}),
+        )
+        engine = PolicyEngine(ast=ast, meta=_meta())
+        result = engine.evaluate({"kind": "read"})
+        assert result.allow is False
+        deny_reasons = [r for r in result.reasons if r.code == "R_POLICY_DENY"]
+        allow_reasons = [r for r in result.reasons if r.code == "R_POLICY_ALLOW"]
+        assert len(deny_reasons) == 1
+        assert len(allow_reasons) == 2
+
+    def test_dotted_key_match(self):
+        ast = _manifest(
+            ASTNode(kind="Policy", id="p1", properties={
+                "effect": "deny",
+                "match": {"object.type": "secret"},
+            })
+        )
+        engine = PolicyEngine(ast=ast, meta=_meta())
+        result = engine.evaluate({"kind": "read", "object": {"type": "secret"}})
+        assert result.allow is False
+
+        result2 = engine.evaluate({"kind": "read", "object": {"type": "public"}})
+        assert result2.allow is True

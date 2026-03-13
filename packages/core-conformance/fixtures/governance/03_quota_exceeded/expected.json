@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_QUOTA_EXCEEDED",
+    "message": "Node count 9999 exceeds tenant limit 100",
+    "severity": "error"
+  }
+}
