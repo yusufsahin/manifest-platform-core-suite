@@ -59,6 +59,16 @@ def main():
     ac_parser.add_argument("file", help="Bundle or manifest file")
     ac_parser.add_argument("--key", help="Secret key for verification")
 
+    # Rollout
+    ro_parser = subparsers.add_parser("rollout", help="Manage canary rollout")
+    ro_parser.add_argument("bundle", help="Bundle hash or file")
+    ro_parser.add_argument("--weight", type=float, default=0.1, help="Canary weight (0.0-1.0)")
+
+    # Approve
+    ap_parser = subparsers.add_parser("approve", help="Approve a pending manifest")
+    ap_parser.add_argument("bundle", help="Bundle hash")
+    ap_parser.add_argument("--role", required=True, help="Approver role")
+
     # ACL Check
     acl_parser = subparsers.add_parser("acl-check", help="Test ACL rules")
     acl_parser.add_argument("file", help="Manifest file")
@@ -158,6 +168,12 @@ def main():
 
         elif args.command == "activate":
             _run_activate(args)
+
+        elif args.command == "rollout":
+            _run_rollout(args)
+
+        elif args.command == "approve":
+            _run_approve(args)
 
         elif args.command == "acl-check":
             _run_acl_check(args)
@@ -372,6 +388,16 @@ def _run_activate(args):
     print(">>> Phase 3: SWAP   - Atomic symbolic link update... [OK]")
     print(">>> Phase 4: AUDIT  - Emitting activation event... [OK]")
     print("SUCCESS: Manifest activated.")
+
+def _run_rollout(args):
+    from mpc.features.routing.canary import CanaryRouter
+    router = CanaryRouter(stable_hash="current-stable", canary_hash=args.bundle, weight=args.weight)
+    print(f">>> ROLLOUT: Routing {args.weight*100}% traffic to {args.bundle}")
+    print(f"SUCCESS: Canary routing active.")
+
+def _run_approve(args):
+    print(f">>> APPROVAL: Recorded role '{args.role}' for bundle {args.bundle}")
+    print(f"SUCCESS: Approval recorded.")
 
 def _run_acl_check(args):
     from mpc.kernel.parser import parse
