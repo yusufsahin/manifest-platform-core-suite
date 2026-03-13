@@ -563,6 +563,7 @@ class ExprEngine:
     max_total_defs: int = 5000
     clock: datetime | str | None = None
     use_vm: bool = True
+    log_callback: Any | None = None
     _bytecode_cache: dict[str, Any] = field(default_factory=dict, init=False)
 
     def typecheck(self, expr: str | dict | ExprNode) -> str:
@@ -609,6 +610,14 @@ class ExprEngine:
             if trace is not None:
                 ctx["__trace__"] = trace
             result_val = _eval_node(node, ctx, self.meta, budget)
+
+        if self.log_callback:
+            self.log_callback({
+                "expr": str(expr),
+                "result": result_val,
+                "steps": budget._steps,
+                "timestamp": time.time()
+            })
 
         result_type = _infer_type(node, self.meta)
 

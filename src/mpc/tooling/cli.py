@@ -64,6 +64,9 @@ def main():
     ro_parser.add_argument("bundle", help="Bundle hash or file")
     ro_parser.add_argument("--weight", type=float, default=0.1, help="Canary weight (0.0-1.0)")
 
+    # Status
+    st_parser = subparsers.add_parser("status", help="Show current platform status")
+
     # Approve
     ap_parser = subparsers.add_parser("approve", help="Approve a pending manifest")
     ap_parser.add_argument("bundle", help="Bundle hash")
@@ -389,15 +392,46 @@ def _run_activate(args):
     print(">>> Phase 4: AUDIT  - Emitting activation event... [OK]")
     print("SUCCESS: Manifest activated.")
 
+def _get_store():
+    from mpc.features.workflow.file_store import JSONFileStateStore
+    return JSONFileStateStore(".mpc_state.json")
+
 def _run_rollout(args):
-    from mpc.features.routing.canary import CanaryRouter
-    router = CanaryRouter(stable_hash="current-stable", canary_hash=args.bundle, weight=args.weight)
-    print(f">>> ROLLOUT: Routing {args.weight*100}% traffic to {args.bundle}")
+    store = _get_store()
+    store.set_global_config("canary_bundle", args.bundle)
+    store.set_global_config("canary_weight", args.weight)
+    print(f">>> ROLLOUT: Routing {args.weight*100}% traffic to {args.bundle} (PERSISTED)")
     print(f"SUCCESS: Canary routing active.")
 
 def _run_approve(args):
-    print(f">>> APPROVAL: Recorded role '{args.role}' for bundle {args.bundle}")
+    store = _get_store()
+    approvals = store.get_global_config(f"approvals_{args.bundle}") or []
+    if args.role not in approvals:
+        approvals.append(args.role)
+        store.set_global_config(f"approvals_{args.bundle}", approvals)
+    print(f">>> APPROVAL: Recorded role '{args.role}' for bundle {args.bundle} (PERSISTED)")
+    print(f"Current approvals: {', '.join(approvals)}")
     print(f"SUCCESS: Approval recorded.")
+
+def _run_status(args):
+    store = _get_store()
+    canary = store.get_global_config("canary_bundle")
+    weight = store.get_global_config("canary_weight")
+    
+    print("MPC PLATFORM STATUS")
+    print("===================")
+    print(f"Current Stable: [active-manifest]")
+    if canary:
+        print(f"Canary Active : {canary}")
+        print(f"Canary Weight : {weight*100}%")
+    else:
+        print("Canary Active : None")
+    
+    print("\nRecent Approvals:")
+    for k, v in store._data.get("config", {}).items():
+        if k.startswith("approvals_"):
+            bundle = k.replace("approvals_", "")
+            print(f"  - {bundle}: {', '.join(v)}")
 
 def _run_acl_check(args):
     from mpc.kernel.parser import parse
