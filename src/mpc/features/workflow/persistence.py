@@ -64,3 +64,30 @@ class SqlAlchemyStateStore:
             "instance_id": instance_id,
             **record_data
         })
+
+
+@dataclass
+class RedisStateStore:
+    """Redis-based state store adapter."""
+    client: Any  # redis.Redis instance
+    prefix: str = "mpc:wf:"
+    ttl_seconds: int = 3600 * 24 * 7  # 1 week default
+
+    def save_state(self, instance_id: str, state_data: dict[str, Any]) -> None:
+        key = f"{self.prefix}{instance_id}"
+        self.client.set(key, json.dumps(state_data), ex=self.ttl_seconds)
+
+    def load_state(self, instance_id: str) -> dict[str, Any] | None:
+        key = f"{self.prefix}{instance_id}"
+        data = self.client.get(key)
+        if not data:
+            return None
+        return json.loads(data)
+
+    def record_audit(self, instance_id: str, record_data: dict[str, Any]) -> None:
+        key = f"{self.prefix}audit:{instance_id}"
+        self.client.rpush(key, json.dumps({
+            "ts": time.time(),
+            **record_data
+        }))
+        self.client.expire(key, self.ttl_seconds)

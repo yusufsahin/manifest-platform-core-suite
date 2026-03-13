@@ -61,6 +61,7 @@ class FSMState:
     on_activate: list[str] = field(default_factory=list)
     on_deactivate: list[str] = field(default_factory=list)
     is_parallel: bool = False
+    history_mode: str | None = None  # None, 'shallow', 'deep'
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,7 @@ class WorkflowEngine:
     _is_firing: bool = field(default=False, init=False)
     is_active: bool = field(default=False, init=False)
     state_entry_time: float = field(default_factory=lambda: 0.0, init=False)
+    _history: dict[str, set[str]] = field(default_factory=dict, init=False)
 
     @property
     def current_state(self) -> str:
@@ -249,6 +251,7 @@ class WorkflowEngine:
                 on_activate=s.get("on_activate", []) if not isinstance(s, str) else [],
                 on_deactivate=s.get("on_deactivate", []) if not isinstance(s, str) else [],
                 is_parallel=s.get("is_parallel", False) if not isinstance(s, str) else False,
+                history_mode=s.get("history_mode") if not isinstance(s, str) else None,
             )
 
         initial = node.properties.get("initial", state_names[0] if state_names else "")
@@ -662,6 +665,9 @@ class WorkflowEngine:
                 if s == lca and src != dest and tr.rule_type != "internal": break
                 st = self.states.get(s)
                 if st:
+                    # Update history before leaving
+                    if st.history_mode:
+                        self._save_history(s, st.history_mode)
                     for a in st.on_leave: _exec(a)
                 new_states.discard(s)
 
@@ -679,7 +685,13 @@ class WorkflowEngine:
                     for a in st.on_enter: _exec(a)
                 new_states.add(s)
             
-            self._add_child_initials_to_set(dest, new_states)
+            # Handle history nodes if dest is a history target
+            if dest in self.states and self.states[dest].name.endswith("_history"):
+                # This is a bit of a placeholder for explicit history nodes, 
+                # but we'll focus on the 'most recent state' restoration.
+                pass
+
+            self._restore_history_or_initials(dest, new_states)
 
         self.active_states = new_states
         self.state_entry_time = time.time()
@@ -710,6 +722,40 @@ class WorkflowEngine:
                     if c_name not in target_set:
                         target_set.add(c_name); self._add_child_initials_to_set(c_name, target_set, depth + 1)
                     break
+
+    def _save_history(self, state_name: str, mode: str) -> None:
+        """Save active sub-states for a state."""
+        sub_active = set()
+        for active in self.active_states:
+            path = self._get_path_to_root(active)
+            if state_name in path and active != state_name:
+                sub_active.add(active)
+        
+        if mode == "shallow":
+            # Only track immediate children
+            shallow = set()
+            for s in sub_active:
+                st = self.states.get(s)
+                if st and st.parent == state_name:
+                    shallow.add(s)
+            self._history[state_name] = shallow
+        else:
+            self._history[state_name] = sub_active
+
+    def _restore_history_or_initials(self, state_name: str, target_set: set[str]) -> None:
+        """Restore sub-states from history if available, otherwise use initials."""
+        st = self.states.get(state_name)
+        if not st: return
+
+        if state_name in self._history:
+            history_states = self._history[state_name]
+            for h in history_states:
+                target_set.add(h)
+                # Recurse if needed for parallel entry etc.
+                # Actually history states are already the leaf active states
+                pass
+        else:
+            self._add_child_initials_to_set(state_name, target_set)
 
     def _audit(self, event: str, actor_id: str|None, result: FireResult, context_keys: list[str]) -> None:
         if not self.audit_port: return
@@ -761,7 +807,8 @@ class WorkflowEngine:
             for child in hierarchy[p_name]:
                 st = self.states[child]
                 if child in hierarchy:
-                    label = f"{'[Parallel] ' if st.is_parallel else ''}{child}"
+                    h_info = f" [History: {st.history_mode}]" if st.history_mode else ""
+                    label = f"{'[Parallel] ' if st.is_parallel else ''}{child}{h_info}"
                     lines.append(f"{indent}subgraph {child} [\"{label}\"]")
                     _render_nest(child, indent + "  ")
                     lines.append(f"{indent}end")
