@@ -1,0 +1,84 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]:
+          - heading "MPC STUDIO" [level=1] [ref=e11]
+          - paragraph [ref=e12]: Manifest Platform Core
+      - generic [ref=e13]:
+        - button "Open Folder" [ref=e14]:
+          - img [ref=e15]
+          - text: Open Folder
+        - button "Save" [ref=e17]:
+          - img [ref=e18]
+          - text: Save
+        - button "Share" [ref=e22]:
+          - img [ref=e23]
+          - text: Share
+        - button "RUN VALIDATION" [ref=e29]:
+          - img [ref=e30]
+          - text: RUN VALIDATION
+        - button [ref=e32]:
+          - img [ref=e33]
+    - generic [ref=e36]:
+      - complementary [ref=e37]:
+        - generic [ref=e38]:
+          - heading "Navigation" [level=2] [ref=e39]
+          - generic [ref=e40]:
+            - button "Manifest Editor" [ref=e41]:
+              - img [ref=e42]
+              - text: Manifest Editor
+            - button "Domain Registry" [ref=e47]:
+              - img [ref=e48]
+              - text: Domain Registry
+            - button "Security Policies" [ref=e52]:
+              - img [ref=e53]
+              - text: Security Policies
+            - button "Workflow Engine" [ref=e56]:
+              - img [ref=e57]
+              - text: Workflow Engine
+            - button "Overlay System" [ref=e59]:
+              - img [ref=e60]
+              - text: Overlay System
+          - heading "Workspace" [level=2] [ref=e64]
+          - generic [ref=e66]: No folder opened
+        - generic [ref=e68]:
+          - heading "Registry Artifact" [level=3] [ref=e69]
+          - generic [ref=e70]:
+            - generic [ref=e71]:
+              - paragraph [ref=e72]: AST Hash
+              - paragraph [ref=e73]: pending...
+            - generic [ref=e74]:
+              - paragraph [ref=e75]: Dependencies
+              - paragraph [ref=e76]: 0 Total
+      - main [ref=e77]:
+        - generic [ref=e79]:
+          - generic [ref=e80]:
+            - generic [ref=e81]: Main.manifest
+            - text: UTF-8
+          - code [ref=e85]:
+            - generic [ref=e86]:
+              - textbox "Editor content" [ref=e87]
+              - textbox [ref=e88]
+              - generic [ref=e93]: "1"
+              - generic [ref=e99]: "@@@_invalid_DSL_%%%"
+        - generic [ref=e101]:
+          - generic [ref=e103]:
+            - generic [ref=e105]: Workflow Preview
+            - generic [ref=e107]: No workflow definitions found to visualize.
+          - generic [ref=e108]:
+            - heading "Validation Output" [level=3] [ref=e109]
+            - generic [ref=e110]: ✓ Semantic & structural validation passed.
+    - contentinfo [ref=e111]:
+      - generic [ref=e112]: "Engine: Pyodide 0.29.3Core: MPC 0.1.0"
+      - generic [ref=e113]:
+        - generic [ref=e114]: Local Engine Live
+        - generic [ref=e115]: "Namespace: none"
+  - generic [ref=e116]:
+    - alert
+    - alert
+```

@@ -13,6 +13,17 @@ from mpc.kernel.ast.models import ASTNode, ManifestAST
 from mpc.kernel.contracts.models import Error
 
 
+def _find_node_source_by_id(
+    node_map: dict[tuple[str, str], ASTNode],
+    node_id: str,
+) -> object | None:
+    """Return the first source span mapped to a definition id, if any."""
+    for (_kind, mapped_id), node in node_map.items():
+        if mapped_id == node_id:
+            return node.source
+    return None
+
+
 def validate_semantic(ast: ManifestAST) -> list[Error]:
     """Return a list of semantic validation errors (empty = valid)."""
     errors: list[Error] = []
@@ -212,8 +223,7 @@ def _check_extends_cycles(
                         ),
                         severity="error",
                         path=f"defs/{start_key[1]}",
-                        source=node_map.get(start_key, node_map.get(start_key))
-                        and node_map[start_key].source
+                        source=node_map[start_key].source
                         if start_key in node_map
                         else None,
                     )
@@ -255,8 +265,7 @@ def _check_import_cycles(
                         message=f"Cycle detected in import chain involving '{dep}'",
                         severity="error",
                         path=f"defs/{dep}",
-                        source=node_map.get(("", dep), node_map.get((ast.namespace, dep)))
-                        and None,
+                        source=_find_node_source_by_id(node_map, dep),
                     )
                 )
                 reported.add(dep)

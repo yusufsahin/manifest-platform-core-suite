@@ -1,8 +1,14 @@
 import { Database, FileCode, Layers, ShieldCheck, Activity } from 'lucide-react';
 
+interface ValidationSummary {
+  status?: string;
+  ast_hash?: string;
+  errors?: unknown[];
+}
+
 interface SidebarProps {
   dsl: string;
-  result: any;
+  result: ValidationSummary | null;
   files: File[];
   activeFile: string;
   onFileSelect: (fileName: string) => void;

@@ -1,6 +1,6 @@
 export class MPCEngine {
   private worker: Worker;
-  private pendingRequests: Map<string, { resolve: Function, reject: Function }> = new Map();
+  private pendingRequests: Map<string, { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = new Map();
 
   constructor() {
     this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
@@ -21,7 +21,7 @@ export class MPCEngine {
     }
   }
 
-  async parseAndValidate(dsl: string): Promise<any> {
+  async parseAndValidate(dsl: string): Promise<unknown> {
     const id = Math.random().toString(36).substring(7);
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject });

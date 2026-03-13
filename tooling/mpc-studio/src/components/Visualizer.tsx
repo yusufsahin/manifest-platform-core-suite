@@ -18,6 +18,16 @@ interface VisualizerProps {
   dsl: string;
 }
 
+function sanitizeNodeId(value: string): string {
+  const cleaned = value.trim().replace(/[^A-Za-z0-9_]/g, '_');
+  return cleaned.length > 0 ? cleaned : 'state_unknown';
+}
+
+function sanitizeEdgeLabel(value: string): string {
+  // Keep labels readable while blocking Mermaid/HTML control characters.
+  return value.trim().replace(/[^A-Za-z0-9 _-]/g, '_').slice(0, 80);
+}
+
 const Visualizer = ({ dsl }: VisualizerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -31,18 +41,29 @@ const Visualizer = ({ dsl }: VisualizerProps) => {
         const workflowMatch = dsl.match(/states:\s*\[([^\]]+)\]/);
         const transitionsMatch = [...dsl.matchAll(/{"from":\s*"([^"]+)",\s*"on":\s*"([^"]+)",\s*"to":\s*"([^"]+)"}/g)];
 
+        containerRef.current.replaceChildren();
+
         if (workflowMatch && transitionsMatch.length > 0) {
           let graphDefinition = 'graph TD\n';
           transitionsMatch.forEach(m => {
-            graphDefinition += `    ${m[1]} -- ${m[2]} --> ${m[3]}\n`;
+            const from = sanitizeNodeId(m[1]);
+            const on = sanitizeEdgeLabel(m[2]);
+            const to = sanitizeNodeId(m[3]);
+            graphDefinition += `    ${from} -- ${on} --> ${to}\n`;
           });
-          
-          containerRef.current.innerHTML = `<div class="mermaid">${graphDefinition}</div>`;
+
+          const mermaidNode = document.createElement('div');
+          mermaidNode.className = 'mermaid';
+          mermaidNode.textContent = graphDefinition;
+          containerRef.current.appendChild(mermaidNode);
           await mermaid.run({
-            nodes: [containerRef.current.querySelector('.mermaid') as HTMLElement],
+            nodes: [mermaidNode],
           });
         } else {
-          containerRef.current.innerHTML = '<div class="flex items-center justify-center h-full text-gray-600 text-xs italic">No workflow definitions found to visualize.</div>';
+          const empty = document.createElement('div');
+          empty.className = 'flex items-center justify-center h-full text-gray-600 text-xs italic';
+          empty.textContent = 'No workflow definitions found to visualize.';
+          containerRef.current.appendChild(empty);
         }
       } catch (err) {
         console.error('Mermaid error:', err);

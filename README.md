@@ -56,39 +56,34 @@ Sizin uygulamanız
 ## Hızlı Başlangıç
 
 ```bash
-pip install mpc-core mpc-policy mpc-acl
+pip install mpc
 ```
 
 ```python
-from mpc.core import ManifestEngine
-from mpc.presets import load_preset
-from mpc.contracts import EventEnvelope, Actor, Object
+from mpc.kernel.parser import parse
+from mpc.kernel.meta.models import DomainMeta, KindDef
+from mpc.tooling.validator.structural import validate_structural
+from mpc.tooling.validator.semantic import validate_semantic
 
-# 1. Engine'i kurun
-engine = ManifestEngine(
-    preset=load_preset("preset-generic-full"),
-    meta=my_domain_meta,        # kendi allowed kind/type tanımlarınız
+manifest_text = open("rules.manifest", encoding="utf-8").read()
+ast = parse(manifest_text)
+
+# Domain meta'nızı uygulamanıza göre doldurun.
+meta = DomainMeta(
+    kinds=[
+        KindDef(name="Workflow", required_props=["states", "transitions", "initial"]),
+    ]
 )
 
-# 2. Kullanıcının manifest'ini compile edin
-artifact = engine.compile(open("rules.yaml").read())
+struct_errors = validate_structural(ast, meta)
+sem_errors = validate_semantic(ast)
+all_errors = struct_errors + sem_errors
 
-# 3. Runtime'da olay geldiğinde değerlendirin
-event = EventEnvelope(
-    name="order.approve",
-    kind="transition",
-    timestamp="2026-02-22T10:00:00Z",
-    actor=Actor(id="user-42", type="user", roles=["manager"]),
-    object=Object(type="order", id="order-99", state="pending"),
-)
-
-decision = engine.evaluate(event, artifact)
-
-if decision.allow:
-    for intent in decision.intents:
-        my_intent_handler(intent)   # notify, audit, maskField, vs.
+if all_errors:
+    for err in all_errors:
+        print(f"[{err.code}] {err.message}")
 else:
-    raise PermissionError([r.code for r in decision.reasons])
+    print("Manifest doğrulaması başarılı.")
 ```
 
 ---
@@ -160,7 +155,7 @@ Tüm MPC implementasyonları `packages/core-conformance/fixtures/` altındaki
 fixture'ları geçmek zorundadır. Fixture'lar davranışı tanımlar — belgeler değil.
 
 ```bash
-pytest mpc_conformance/
+mpc-conformance run packages/core-conformance/fixtures
 ```
 
 ---
