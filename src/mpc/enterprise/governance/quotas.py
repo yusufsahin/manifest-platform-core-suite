@@ -62,7 +62,7 @@ class QuotaEnforcer:
             )
         return None
 
-    def check_eval(self, count: int = 1) -> Error | None:
+    def check_eval(self, count: int = 1, steps: int = 0, regex_ops: int = 0) -> Error | None:
         self._eval_count += count
         if self._eval_count > self.limits.max_eval_ops:
             return Error(
@@ -70,6 +70,13 @@ class QuotaEnforcer:
                 message=f"Eval quota exceeded (limit: {self.limits.max_eval_ops})",
                 severity="error",
             )
+        # We could also track aggregate steps/regex here if limits existed
+        return None
+
+    def check_node_budget(self, steps: int, depth: int) -> Error | None:
+        """Verify if a single execution exceeded node-specific limits."""
+        if steps > self.limits.max_manifest_nodes: # repurposed for example
+             return Error(code="E_QUOTA_COMPLEXITY", message="Expression too complex")
         return None
 
     def check_nodes(self, count: int) -> Error | None:

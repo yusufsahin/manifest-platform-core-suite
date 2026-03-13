@@ -7,6 +7,8 @@ Per EPIC F2:
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -29,12 +31,26 @@ class SigningPort(Protocol):
         ...
 
 
-@runtime_checkable
-class VerificationPort(Protocol):
-    """Interface for verifying artifact signatures."""
     def verify(self, data: bytes, signature: str) -> bool:
         """Return True if *signature* is valid for *data*."""
         ...
+
+
+@dataclass
+class HMACSigningPort:
+    """Standard HMAC-SHA256 signature implementation."""
+    secret: str
+
+    def sign(self, data: bytes) -> str:
+        h = hmac.new(self.secret.encode(), data, hashlib.sha256)
+        return h.hexdigest()
+
+    def verify(self, data: bytes, signature: str) -> bool:
+        expected = self.sign(data)
+        return hmac.compare_digest(expected, signature)
+
+    def algorithm(self) -> str:
+        return "hmac-sha256"
 
 
 @dataclass(frozen=True)

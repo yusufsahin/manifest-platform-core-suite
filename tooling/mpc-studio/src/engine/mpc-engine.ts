@@ -46,6 +46,20 @@ export class MPCEngine {
       payload: { expr, context, enable_trace: enableTrace } 
     });
   }
+
+  async evaluatePolicy(dsl: string, event: any): Promise<any> {
+    return this.postMessage<any>({
+      type: 'EVALUATE_POLICY',
+      payload: { dsl, event }
+    });
+  }
+
+  async generateUISchema(dsl: string): Promise<any> {
+    return this.postMessage<any>({
+      type: 'GENERATE_UISCHEMA',
+      payload: { dsl }
+    });
+  }
 }
 
 export const mpcEngine = new MPCEngine();

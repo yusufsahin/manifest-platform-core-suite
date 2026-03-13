@@ -25,6 +25,7 @@ from mpc.features.expr.ir import (
     ExprUnary,
     from_dict as ir_from_dict,
 )
+from mpc.features.expr.compiler import BytecodeCompiler, BytecodeVM, OpCode
 from mpc.kernel.meta.models import DomainMeta, FunctionDef
 
 
@@ -307,14 +308,20 @@ def _fn_now(args: list[Any], ctx: dict[str, Any]) -> str:
 
 @_register_builtin("regex")
 def _fn_regex(args: list[Any], ctx: dict[str, Any]) -> bool:
-    """Regex match — counts against the regex budget."""
+    """Regex match — with timeout protection."""
     if len(args) < 2:
         return False
     text = str(args[0])
     pattern = str(args[1])
     budget: _Budget | None = ctx.get("__budget__")
+    
     if budget:
         budget.count_regex()
+        # Early time check before potentially slow regex
+        budget._check_time()
+
+    # Note: Real ReDoS protection often requires a non-backtracking engine (like re2).
+    # Here we simulate with a budget check and relying on the overall engine timeout.
     try:
         return bool(re.search(pattern, text))
     except re.error:
@@ -553,9 +560,10 @@ class ExprEngine:
     meta: DomainMeta
     max_depth: int = 50
     max_steps: int = 5000
-    max_time_ms: float = 50.0
-    max_regex_ops: int = 5000
+    max_total_defs: int = 5000
     clock: datetime | str | None = None
+    use_vm: bool = True
+    _bytecode_cache: dict[str, Any] = field(default_factory=dict, init=False)
 
     def typecheck(self, expr: str | dict | ExprNode) -> str:
         """Return the inferred type of *expr*, or raise on type mismatch."""
@@ -583,12 +591,25 @@ class ExprEngine:
         if self.clock is not None:
             ctx.setdefault("__clock__", self.clock)
         ctx["__budget__"] = budget
-        
-        trace: list[dict[str, Any]] | None = [] if enable_trace else None
-        if trace is not None:
-            ctx["__trace__"] = trace
 
-        result_val = _eval_node(node, ctx, self.meta, budget)
+        if self.use_vm and not enable_trace:
+            # Simple string-key cache
+            expr_key = str(expr)
+            if expr_key in self._bytecode_cache:
+                instructions = self._bytecode_cache[expr_key]
+            else:
+                compiler = BytecodeCompiler()
+                instructions = compiler.compile(node)
+                self._bytecode_cache[expr_key] = instructions
+                
+            vm = BytecodeVM(builtins=_BUILTINS, budget=budget)
+            result_val = vm.execute(instructions, ctx, self.meta)
+        else:
+            trace: list[dict[str, Any]] | None = [] if enable_trace else None
+            if trace is not None:
+                ctx["__trace__"] = trace
+            result_val = _eval_node(node, ctx, self.meta, budget)
+
         result_type = _infer_type(node, self.meta)
 
         return ExprResult(

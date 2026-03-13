@@ -41,6 +41,12 @@ def compose_decisions(
     if strategy == "allow-wins":
         return _allow_wins(decisions)
 
+    if strategy == "first-applicable":
+        return _first_applicable(decisions)
+
+    if strategy == "only-one":
+        return _only_one(decisions)
+
     return _deny_wins(decisions)
 
 
@@ -87,6 +93,36 @@ def _allow_wins(decisions: list[Decision]) -> ComposeResult:
         allow=has_allow,
         reasons=reasons,
         intents=deduped,
+    )
+
+
+def _first_applicable(decisions: list[Decision]) -> ComposeResult:
+    # "applicable" means allow=True OR reasons is not empty
+    for d in decisions:
+        if d.reasons:
+            return ComposeResult(
+                allow=d.allow,
+                reasons=list(d.reasons),
+                intents=_dedupe_intents(list(d.intents)),
+            )
+    return ComposeResult(allow=True)
+
+
+def _only_one(decisions: list[Decision]) -> ComposeResult:
+    applicable = [d for d in decisions if d.reasons]
+    if len(applicable) > 1:
+        return ComposeResult(
+            allow=False,
+            reasons=[Reason(code="E_COMPOSE_CONFLICT", summary="Multiple policies applicable")]
+        )
+    if not applicable:
+        return ComposeResult(allow=True)
+    
+    d = applicable[0]
+    return ComposeResult(
+        allow=d.allow,
+        reasons=list(d.reasons),
+        intents=_dedupe_intents(list(d.intents)),
     )
 
 

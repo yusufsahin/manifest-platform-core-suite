@@ -241,6 +241,60 @@ json.dumps({
         py.globals.delete('EXPR');
         py.globals.delete('CTX');
       }
+    } else if (type === 'EVALUATE_POLICY') {
+      const { event, dsl } = payload;
+      py.globals.set('DSL', dsl);
+      py.globals.set('EVENT', JSON.stringify(event));
+      
+      try {
+        const result = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.features.policy import PolicyEngine
+from mpc.kernel.meta.models import DomainMeta, KindDef
+
+ast = parse(DSL)
+meta = DomainMeta(kinds=[KindDef(name="Policy")]) # simplified meta
+engine = PolicyEngine(ast=ast, meta=meta)
+res = engine.evaluate(json.loads(EVENT))
+
+json.dumps({
+    "allow": res.allow,
+    "reasons": [{"code": r.code, "summary": r.summary} for r in res.reasons],
+    "intents": [{"kind": i.kind, "target": i.target} for i in res.intents]
+})
+`);
+        self.postMessage({ id, type: 'POLICY_RESULT', payload: JSON.parse(result) });
+      } finally {
+        py.globals.delete('DSL');
+        py.globals.delete('EVENT');
+      }
+    } else if (type === 'GENERATE_UISCHEMA') {
+      const { dsl } = payload;
+      py.globals.set('DSL', dsl);
+      
+      try {
+        const result = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.tooling.uischema.generator import generate_ui_schema
+from mpc.kernel.meta.models import DomainMeta, KindDef
+
+ast = parse(DSL)
+# build meta from kinds present in AST for simplicity
+kind_names = list(set(d.kind for d in ast.defs))
+meta = DomainMeta(kinds=[KindDef(name=n) for n in kind_names])
+res = generate_ui_schema(ast, meta)
+
+json.dumps({
+    "schemas": res.schemas,
+    "warnings": res.warnings
+})
+`);
+        self.postMessage({ id, type: 'UISCHEMA_RESULT', payload: JSON.parse(result) });
+      } finally {
+        py.globals.delete('DSL');
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

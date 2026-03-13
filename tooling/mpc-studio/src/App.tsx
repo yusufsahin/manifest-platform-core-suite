@@ -6,6 +6,8 @@ import ManifestEditor from './components/ManifestEditor';
 import Visualizer from './components/Visualizer';
 import DebugPanel from './components/DebugPanel';
 import DomainRegistry from './components/DomainRegistry';
+import PolicySimulator from './components/PolicySimulator';
+import UISchemaView from './components/UISchemaView';
 import { StatusBadge } from './components/StatusBadge';
 
 const VALIDATION_DEBOUNCE_MS = 350;
@@ -55,7 +57,7 @@ function App() {
   const [activeFileName, setActiveFileName] = useState('Main.manifest');
   const [debugMode, setDebugMode] = useState(false);
   const [debugResult, setDebugResult] = useState<{ value: any; type: string | null; trace: any[] | null } | null>(null);
-  const [activeTab, setActiveTab ] = useState<'preview' | 'debug'>('preview');
+  const [activeTab, setActiveTab ] = useState<'preview' | 'debug' | 'ui'>('preview');
   const [sidebarTab, setSidebarTab] = useState('editor');
   const validationTimeoutRef = useRef<number | null>(null);
 
@@ -126,6 +128,14 @@ function App() {
     } catch (err) {
       console.error('Failed to select file', err);
     }
+  };
+
+  const handleGenerateUISchema = async () => {
+    return await mpcEngine.generateUISchema(dsl);
+  };
+
+  const handleSimulatePolicy = async (event: any) => {
+    return await mpcEngine.evaluatePolicy(dsl, event);
   };
 
   const handleSave = async () => {
@@ -209,6 +219,8 @@ function App() {
                 <DomainRegistry 
                   definitions={result?.status === 'success' ? (result.ast?.defs || []) : []}
                 />
+              ) : sidebarTab === 'security' ? (
+                <PolicySimulator onSimulate={handleSimulatePolicy} />
               ) : (
                 <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">
                   Feature '{sidebarTab}' coming soon
@@ -236,16 +248,26 @@ function App() {
                 >
                   Debugger
                 </button>
+                <button 
+                  onClick={() => setActiveTab('ui')}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    activeTab === 'ui' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  UI Schema
+                </button>
               </div>
               <div className="flex-1 overflow-hidden">
                 {activeTab === 'preview' ? (
                   <Visualizer dsl={dsl} />
-                ) : (
+                ) : activeTab === 'debug' ? (
                   <DebugPanel 
                     trace={debugResult?.trace || null} 
                     value={debugResult?.value} 
                     type={debugResult?.type || null}
                   />
+                ) : (
+                  <UISchemaView onGenerate={handleGenerateUISchema} />
                 )}
               </div>
             </div>

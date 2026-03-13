@@ -13,6 +13,8 @@ from typing import Any
 
 from mpc.kernel.ast.models import ASTNode, ManifestAST
 from mpc.kernel.contracts.models import Error, Intent, Reason
+from mpc.kernel.meta.models import DomainMeta
+from mpc.features.expr import ExprEngine
 
 
 @dataclass(frozen=True)
@@ -28,6 +30,7 @@ class ACLEngine:
     """Evaluate ACL definitions for access control decisions."""
 
     ast: ManifestAST
+    meta: DomainMeta | None = None
     role_hierarchy: dict[str, set[str]] = field(default_factory=dict)
 
     def check(
@@ -40,6 +43,8 @@ class ACLEngine:
     ) -> ACLResult:
         """Check if *action* on *resource* is allowed for the given actor."""
         effective_roles = self._expand_roles(set(actor_roles or []))
+        expr_engine = ExprEngine(meta=self.meta) if self.meta else None
+        
         acl_defs = [d for d in self.ast.defs if d.kind == "ACL"]
         acl_defs.sort(
             key=lambda d: (-d.properties.get("priority", 0), d.id)
@@ -82,7 +87,7 @@ class ACLEngine:
             # ABAC path
             condition = rule.properties.get("condition")
             if isinstance(condition, dict) and actor_attrs:
-                if _eval_abac_condition(condition, actor_attrs):
+                if _eval_abac_condition(condition, actor_attrs, expr_engine):
                     effect = rule.properties.get("effect", "allow")
                     if effect == "deny":
                         reasons.append(Reason(
@@ -136,8 +141,16 @@ def _collect_mask_intents(rule: ASTNode) -> list[Intent]:
     return intents
 
 
-def _eval_abac_condition(condition: dict[str, Any], attrs: dict[str, Any]) -> bool:
-    """Evaluate a simple ABAC condition dict against actor attributes."""
+def _eval_abac_condition(
+    condition: dict[str, Any], 
+    attrs: dict[str, Any],
+    expr_engine: ExprEngine | None = None
+) -> bool:
+    """Evaluate an ABAC condition dict against actor attributes."""
+    if "expr" in condition and expr_engine:
+        res = expr_engine.evaluate(condition["expr"], context={"actor": attrs})
+        return bool(res.value)
+
     for key, expected in condition.items():
         if attrs.get(key) != expected:
             return False
