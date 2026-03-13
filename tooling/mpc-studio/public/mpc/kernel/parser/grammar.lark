@@ -1,0 +1,53 @@
+// MPC DSL Grammar — parsed by Lark (LALR)
+//
+// Example:
+//   @schema 1
+//   @namespace "acme"
+//   @name "order-rules"
+//   @version "1.0.0"
+//
+//   def Policy allow_editors "AllowEditors" {
+//       effect: "allow"
+//       priority: 10
+//       def Condition c1 {
+//           expr: "role == 'editor'"
+//       }
+//   }
+
+start: directive* definition*
+
+directive: "@schema" INT                -> schema_dir
+         | "@namespace" ESCAPED_STRING  -> namespace_dir
+         | "@name" ESCAPED_STRING       -> name_dir
+         | "@version" ESCAPED_STRING    -> version_dir
+
+definition: "def" IDENT IDENT [ESCAPED_STRING] "{" def_body* "}"
+
+def_body: property        -> body_prop
+        | definition      -> body_def
+
+property: prop_key ":" value
+
+prop_key: IDENT
+        | ESCAPED_STRING
+
+?value: ESCAPED_STRING  -> string_val
+      | SIGNED_NUMBER   -> number_val
+      | "true"          -> true_val
+      | "false"         -> false_val
+      | "null"          -> null_val
+      | array
+      | object
+
+array: "[" [value ("," value)* ","?] "]"
+object: "{" [property ("," property)* ","?] "}"
+
+IDENT: /[a-zA-Z_][a-zA-Z0-9_.-]*/
+
+%import common.ESCAPED_STRING
+%import common.SIGNED_NUMBER
+%import common.INT
+%import common.WS
+
+%ignore WS
+%ignore /\/\/.*/

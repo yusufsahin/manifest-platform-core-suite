@@ -1,4 +1,4 @@
-from mpc.meta import DomainMeta, KindDef, FunctionDef, diff_meta
+from mpc.kernel.meta import DomainMeta, KindDef, FunctionDef, diff_meta
 
 
 class TestDomainMeta:

@@ -1,0 +1,111 @@
+"""Policy engine core.
+
+Per MASTER_SPEC section 13:
+  - Event matcher, expression-based conditions
+  - Decision template with reasons and intents
+  - Deterministic ordering: priority desc, then definition order
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.kernel.contracts.models import Decision, Error, Intent, Reason
+from mpc.kernel.meta.models import DomainMeta
+from mpc.features.expr import ExprEngine
+
+
+@dataclass(frozen=True)
+class PolicyResult:
+    allow: bool
+    reasons: list[Reason] = field(default_factory=list)
+    intents: list[Intent] = field(default_factory=list)
+    errors: list[Error] = field(default_factory=list)
+
+
+@dataclass
+class PolicyEngine:
+    """Evaluate policy definitions against events."""
+
+    ast: ManifestAST
+    meta: DomainMeta
+
+    def evaluate(
+        self,
+        event: dict[str, Any],
+        *,
+        actor_roles: list[str] | None = None,
+    ) -> PolicyResult:
+        """Evaluate all policy defs against *event* and produce a decision."""
+        policy_defs = [d for d in self.ast.defs if d.kind == "Policy"]
+        policy_defs.sort(
+            key=lambda d: (-d.properties.get("priority", 0), d.id)
+        )
+
+        reasons: list[Reason] = []
+        intents: list[Intent] = []
+        allow = True
+
+        expr_engine = ExprEngine(meta=self.meta)
+
+        for pdef in policy_defs:
+            if not _matches_event(pdef, event, expr_engine):
+                continue
+
+            effect = pdef.properties.get("effect", "allow")
+            if effect == "deny":
+                allow = False
+                reasons.append(Reason(
+                    code="R_POLICY_DENY",
+                    summary=f"Denied by policy '{pdef.id}'",
+                ))
+            else:
+                reasons.append(Reason(
+                    code="R_POLICY_ALLOW",
+                    summary=f"Allowed by policy '{pdef.id}'",
+                ))
+
+            intent_defs = pdef.properties.get("intents", [])
+            if isinstance(intent_defs, list):
+                for idef in intent_defs:
+                    if isinstance(idef, dict):
+                        intents.append(Intent(
+                            kind=idef.get("kind", "audit"),
+                            target=idef.get("target", ""),
+                        ))
+
+        return PolicyResult(allow=allow, reasons=reasons, intents=intents)
+
+
+def _matches_event(policy: ASTNode, event: dict[str, Any], expr_engine: ExprEngine) -> bool:
+    """Check if a policy definition's matcher matches the event."""
+    match = policy.properties.get("match")
+    if match is None:
+        return True
+    if not isinstance(match, dict):
+        return True
+    
+    # Priority 1: Expression based matching
+    if "expr" in match:
+        expr = match["expr"]
+        res = expr_engine.evaluate(expr, context={"event": event})
+        return bool(res.value)
+
+    # Priority 2: Static key-value matching
+    for key, expected in match.items():
+        actual = _get_dotted(event, key)
+        if actual != expected:
+            return False
+    return True
+
+
+def _get_dotted(data: dict[str, Any], key: str) -> Any:
+    """Resolve a dotted key path like 'object.type' from a nested dict."""
+    parts = key.split(".")
+    current: Any = data
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current

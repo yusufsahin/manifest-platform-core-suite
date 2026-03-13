@@ -5,7 +5,7 @@
 
 ---
 
-## Epic A — Contracts + Canonicalization
+## Epic A — Kernel: Contracts + Canonical (`mpc.kernel`)
 
 | Kriter | Durum | Notlar |
 |---|---|---|
@@ -22,7 +22,7 @@
 
 ---
 
-## Epic B — AST + Meta + Parser + Validator + Registry
+## Epic B — Kernel & Tooling: AST + Parser + Validator (`mpc.kernel`, `mpc.tooling`)
 
 | Kriter | Durum | Notlar |
 |---|---|---|
@@ -39,7 +39,7 @@
 
 ---
 
-## Epic C — Expression Engine
+## Epic C — Features: Expression Engine (`mpc.features.expr`)
 
 | Kriter | Durum | Notlar |
 |---|---|---|
@@ -57,7 +57,7 @@
 
 ---
 
-## Epic D — Engines + Composition
+## Epic D — Features: Engines & Tooling (`mpc.features.*`, `mpc.tooling.uischema`)
 
 | Kriter | Durum | Notlar |
 |---|---|---|
@@ -79,7 +79,7 @@
 
 ---
 
-## Epic E — Overlay / Imports / Namespaces
+## Epic E — Features & Tooling: Overlay & Imports (`mpc.features.overlay`, `mpc.tooling.imports`)
 
 | Kriter | Durum | Notlar |
 |---|---|---|
@@ -95,7 +95,7 @@
 
 ---
 
-## Epic F — Enterprise Governance
+## Epic F — Enterprise Governance (`mpc.enterprise.*`)
 
 | Kriter | Durum | Notlar |
 |---|---|---|
@@ -114,7 +114,7 @@
 
 ---
 
-## Epic G — Security Hardening
+## Epic G — Features: Security (`mpc.features.redaction`)
 
 | Kriter | Durum | Notlar |
 |---|---|---|
@@ -160,6 +160,9 @@
 | G | Security Hardening | 4/7 | %57 |
 | H | Conformance + CI Gates | 4/8 | %50 |
 | **Toplam** | | **43/70** | **%61** |
+
+> [!NOTE]
+> All package names have been refactored to the `mpc.<package>` hierarchical structure.
 
 ---
 

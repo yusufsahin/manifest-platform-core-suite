@@ -1,30 +1,30 @@
 # Implementation Checklist Pack (Cursor-ready)
 
 ## 1) Must-Implement First
-- core-contracts schemas (Event/Decision/Error/Intent/Trace)
-- core-canonical (canonical JSON + stable hash)
-- core-errors registry enforcement
-- core-conformance runner behavior + minimal fixtures
+- `mpc.kernel.contracts` schemas (Event/Decision/Error/Intent/Trace)
+- `mpc.kernel.canonical` (canonical JSON + stable hash)
+- `mpc.kernel.errors` registry enforcement
+- `mpc.tooling.conformance` runner behavior + minimal fixtures
 
 ## 2) Next
-- core-meta (meta-metadata + diff)
-- core-parser (DSL/YAML/JSON normalize)
-- core-validator (structural + semantic)
-- core-overlay (merge semantics)
-- core-expr (IR + typecheck + eval + budgets)
+- `mpc.kernel.meta` (meta-metadata + diff)
+- `mpc.kernel.parser` (DSL/YAML/JSON normalize)
+- `mpc.tooling.validator` (structural + semantic)
+- `mpc.features.overlay` (merge semantics)
+- `mpc.features.expr` (IR + typecheck + eval + budgets)
 
 ## 3) Engines
-- core-fsm + core-workflow
-- core-policy
-- core-acl
-- core-decision-compose
+- `mpc.features.workflow` (FSM + Binding)
+- `mpc.features.policy`
+- `mpc.features.acl`
+- `mpc.features.compose`
 
 ## 4) Enterprise
-- artifact bundle format (compiled/provenance/attest/sbom/signature)
+- `mpc.enterprise.governance` (bundle/provenance/attest/sbom/signature)
 - signing/verification ports
 - activation protocol + audit + rollback + canary
 - quotas + kill switch
-- redaction everywhere
+- `mpc.features.redaction`
 
 ## 5) Release Gates
 - conformance suite 100% pass

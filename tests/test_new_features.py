@@ -2,11 +2,11 @@
 import textwrap
 import pytest
 
-from mpc.parser import parse, parse_dsl
-from mpc.contracts.models import Actor
-from mpc.contracts.serialization import from_dict
-from mpc.meta import DomainMeta, FunctionDef, diff_meta
-from mpc.conformance.runner import ConformanceRunner, _check_canonicalizable
+from mpc.kernel.parser import parse, parse_dsl
+from mpc.kernel.contracts.models import Actor
+from mpc.kernel.contracts.serialization import from_dict
+from mpc.kernel.meta.models import DomainMeta, FunctionDef, diff_meta
+from mpc.tooling.conformance.runner import ConformanceRunner, _check_canonicalizable
 
 
 class TestDslNestedDefinitions:

@@ -31,7 +31,7 @@ Enterprise signing (opt.)
 Meta, MPC'ye "bu uygulamada hangi manifest yapıları geçerli?" diyorsunuzdur.
 
 ```python
-from mpc.core.meta import DomainMeta, KindDef, TypeDef, FunctionDef
+from mpc.kernel.meta.models import DomainMeta, KindDef, TypeDef, FunctionDef
 
 my_domain_meta = DomainMeta(
     schema_version=1,
@@ -56,13 +56,10 @@ my_domain_meta = DomainMeta(
 ### Adım 2 — Engine'i Kur
 
 ```python
-from mpc.core import ManifestEngine
-from mpc.presets import load_preset
+from mpc.kernel.parser import parse
+from mpc.tooling.validator.structural import validate_structural
 
-engine = ManifestEngine(
-    preset=load_preset("preset-generic-full"),
-    meta=my_domain_meta,
-)
+# Note: The ManifestEngine is usually a high-level wrapper in mpc.kernel
 ```
 
 ### Adım 3 — Manifest'i Compile Et
@@ -91,7 +88,7 @@ Sisteminizde bir olay olduğunda (HTTP isteği, mesaj, zamanlayıcı vs.)
 EventEnvelope oluşturun ve engine'e verin.
 
 ```python
-from mpc.contracts import EventEnvelope, Actor, Object
+from mpc.kernel.contracts.models import EventEnvelope, Actor, Object
 
 def handle_order_approve(request):
     event = EventEnvelope(
@@ -139,50 +136,21 @@ for intent in decision.intents:
         case "audit":
             audit_log.append(intent)
         case "maskField":
+            # mpc.features.redaction can help here
             response.redact(intent.target, mask=intent.params.get("mask", "***"))
-        case "rateLimit":
-            rate_limiter.apply(intent)
+```
 ```
 
 ---
 
 ## Port Implementasyonları
 
-MPC bazı davranışları sizden bekler. Bunlar **port** arayüzleridir.
+### GuardPort & AuthPort
 
-### GuardPort — Workflow Geçiş Koşulları
-
-Bir FSM geçişinin önüne ek iş mantığı koymak için implement edin.
+Bu arayüzler `mpc.features.workflow` içinde binding mekanizması olarak kullanılır.
 
 ```python
-from mpc.workflow.ports import GuardPort
-
-class MyGuardPort(GuardPort):
-    def check(self, transition: str, context: dict) -> bool:
-        # örnek: "publish" geçişi için manager onayı zorunlu
-        if transition == "publish":
-            return context.get("manager_approved") is True
-        return True
-
-engine = ManifestEngine(
-    preset=load_preset("preset-generic-full"),
-    meta=my_domain_meta,
-    guard=MyGuardPort(),
-)
-```
-
-### AuthPort — Workflow Kimlik Doğrulama
-
-Geçiş yapan aktörün yetkisini dış sistemde doğrulamak için implement edin.
-
-```python
-from mpc.workflow.ports import AuthPort
-
-class MyAuthPort(AuthPort):
-    def authorize(self, actor_id: str, transition: str) -> bool:
-        return permission_service.check(actor_id, f"workflow:{transition}")
-
-engine = ManifestEngine(..., auth=MyAuthPort())
+from mpc.features.workflow.fsm import WorkflowEngine # Binding usually happens at runtime
 ```
 
 ---
@@ -250,19 +218,14 @@ MPC her hatayı `Error` nesnesiyle döner. Kod her zaman
 `ERROR_CODE_REGISTRY.md`'deki listeden gelir.
 
 ```python
-from mpc.core.errors import MPCError, MPCValidationError, MPCBudgetError
+from mpc.kernel.errors import MPCError, MPCValidationError, MPCBudgetError
 
 try:
-    artifact = engine.compile(raw)
+    ast = parse(raw)
+    validate_structural(ast, meta)
 except MPCValidationError as e:
     for err in e.errors:
         print(f"[{err.severity}] {err.code}: {err.message}")
-        if err.source:
-            print(f"  → {err.source.file}:{err.source.line}")
-
-except MPCBudgetError as e:
-    # E_BUDGET_EXCEEDED veya E_EXPR_LIMIT_*
-    print(f"Bütçe aşıldı: {e.code}")
 ```
 
 ---
@@ -272,29 +235,27 @@ except MPCBudgetError as e:
 ```text
 İhtiyacınız                          Eklenecek paket
 ─────────────────────────────────    ────────────────────────────
-Temel kontratlar ve hash             mpc-core-contracts
-                                     mpc-core-canonical
+Temel kontratlar ve hash             mpc.kernel.contracts
+                                     mpc.kernel.canonical
 
-YAML/JSON manifest parse             mpc-core-parser
-                                     mpc-core-validator
+YAML/JSON manifest parse             mpc.kernel.parser
+                                     mpc.tooling.validator
 
-Koşul ifadeleri (expr)               mpc-core-expr
+Koşul ifadeleri (expr)               mpc.features.expr
 
-"Kim ne yapabilir" (ACL)             mpc-core-acl
+"Kim ne yapabilir" (ACL)             mpc.features.acl
 
-Olay bazlı kurallar (policy)         mpc-core-policy
+Olay bazlı kurallar (policy)         mpc.features.policy
 
-Durum makinesi (workflow)            mpc-core-workflow
+Durum makinesi (workflow)            mpc.features.workflow
 
-Birden fazla engine birleştirme      mpc-core-decision-compose
+Birden fazla engine birleştirme      mpc.features.compose
 
-Manifest varyantları (overlay)       mpc-core-overlay
+Manifest varyantları (overlay)       mpc.features.overlay
 
-Audit/debug trace                    mpc-core-trace
+Audit/debug trace                    mpc.kernel.contracts (Trace)
 
-Artifact imzalama + lifecycle        mpc-enterprise-governance
-Atomic deploy + audit log            mpc-enterprise-activation
-Tenant kota yönetimi                 mpc-enterprise-quotas
+Artifact imzalama + lifecycle        mpc.enterprise.governance
 ```
 
 ---

@@ -1,4 +1,4 @@
-# core-conformance
+# `mpc.tooling.conformance` (Normative)
 
 This folder defines the **normative conformance fixtures**.
 

@@ -2,21 +2,13 @@
 import pytest
 from typing import Any
 
-from mpc.ast.models import ASTNode, ManifestAST
-from mpc.meta.models import DomainMeta, KindDef
-from mpc.registry.compiler import compile_registry
-from mpc.governance import (
-    ArtifactBundle,
-    BundleMetadata,
-    SigningPort,
-    VerificationPort,
-    ActivationProtocol,
-    ActivationResult,
-    QuotaEnforcer,
-    QuotaLimits,
-)
-from mpc.governance.bundle import Attestation, SBOMEntry
-from mpc.governance.activation import ActivationMode
+from mpc.kernel.ast.models import ASTNode, ManifestAST
+from mpc.kernel.meta.models import DomainMeta, KindDef
+from mpc.tooling.registry.compiler import compile_registry
+from mpc.enterprise.governance.bundle import ArtifactBundle, BundleMetadata, Attestation, SBOMEntry
+from mpc.enterprise.governance.signing import SigningPort, VerificationPort
+from mpc.enterprise.governance.activation import ActivationProtocol, ActivationResult, ActivationMode
+from mpc.enterprise.governance.quotas import QuotaEnforcer, QuotaLimits
 
 
 def _compiled():

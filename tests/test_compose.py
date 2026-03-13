@@ -1,8 +1,8 @@
 """Tests for decision composition engine (D6)."""
 import pytest
 
-from mpc.contracts.models import Decision, Intent, Reason
-from mpc.compose import compose_decisions, ComposeResult
+from mpc.kernel.contracts.models import Decision, Intent, Reason
+from mpc.features.compose.engine import compose_decisions, ComposeResult
 
 
 class TestDenyWins:

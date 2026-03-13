@@ -1,6 +1,6 @@
 import json
 
-from mpc.canonical import canonicalize, canonicalize_bytes, stable_hash, order_definitions
+from mpc.kernel.canonical import canonicalize, canonicalize_bytes, stable_hash, order_definitions
 
 
 class TestCanonicalize:

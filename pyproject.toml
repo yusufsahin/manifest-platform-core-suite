@@ -22,7 +22,8 @@ dev = [
 ]
 
 [project.scripts]
-mpc-conformance = "mpc.conformance.__main__:main"
+mpc-conformance = "mpc.tooling.conformance.__main__:main"
+mpc = "mpc.tooling.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

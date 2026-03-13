@@ -56,75 +56,70 @@ Sizin uygulamanız
 ## Hızlı Başlangıç
 
 ```bash
-pip install mpc-core mpc-policy mpc-acl
+pip install mpc
 ```
 
 ```python
-from mpc.core import ManifestEngine
-from mpc.presets import load_preset
-from mpc.contracts import EventEnvelope, Actor, Object
+from mpc.kernel.parser import parse
+from mpc.kernel.meta.models import DomainMeta, KindDef
+from mpc.tooling.validator.structural import validate_structural
+from mpc.tooling.validator.semantic import validate_semantic
 
-# 1. Engine'i kurun
-engine = ManifestEngine(
-    preset=load_preset("preset-generic-full"),
-    meta=my_domain_meta,        # kendi allowed kind/type tanımlarınız
+manifest_text = open("rules.manifest", encoding="utf-8").read()
+ast = parse(manifest_text)
+
+# Domain meta'nızı uygulamanıza göre doldurun.
+meta = DomainMeta(
+    kinds=[
+        KindDef(name="Workflow", required_props=["states", "transitions", "initial"]),
+    ]
 )
 
-# 2. Kullanıcının manifest'ini compile edin
-artifact = engine.compile(open("rules.yaml").read())
+struct_errors = validate_structural(ast, meta)
+sem_errors = validate_semantic(ast)
+all_errors = struct_errors + sem_errors
 
-# 3. Runtime'da olay geldiğinde değerlendirin
-event = EventEnvelope(
-    name="order.approve",
-    kind="transition",
-    timestamp="2026-02-22T10:00:00Z",
-    actor=Actor(id="user-42", type="user", roles=["manager"]),
-    object=Object(type="order", id="order-99", state="pending"),
-)
-
-decision = engine.evaluate(event, artifact)
-
-if decision.allow:
-    for intent in decision.intents:
-        my_intent_handler(intent)   # notify, audit, maskField, vs.
+if all_errors:
+    for err in all_errors:
+        print(f"[{err.code}] {err.message}")
 else:
-    raise PermissionError([r.code for r in decision.reasons])
+    print("Manifest doğrulaması başarılı.")
 ```
 
 ---
 
-## Kütüphane Seti
+## Kütüphane Yapısı (Hierarchical)
 
-### Kernel (zorunlu)
+MPC artık daha organize bir hiyerarşik yapıya sahiptir:
 
-| Paket | Ne yapar |
-| --- | --- |
-| `mpc-core-contracts` | EventEnvelope, Decision, Error, Intent, Trace modelleri |
-| `mpc-core-canonical` | Deterministik JSON + SHA-256 stable hash |
-| `mpc-core-ast` | Canonical AST modeli |
-| `mpc-core-errors` | Hata kodu registry ve yardımcılar |
+### 1. Kernel (`mpc.kernel`)
+Çekirdek yapı taşları ve parser temelleri.
+- `mpc.kernel.contracts`: EventEnvelope, Decision, Error modelleri.
+- `mpc.kernel.canonical`: Deterministik JSON + Stable Hash.
+- `mpc.kernel.ast`: Canonical AST modelleri.
+- `mpc.kernel.parser`: DSL / YAML / JSON → AST dönüştürücü.
+- `mpc.kernel.errors`: Hata kodu registry.
 
-### Feature (ihtiyaca göre seçin)
+### 2. Features (`mpc.features`)
+Domain spesifik engine'ler ve özellikler.
+- `mpc.features.workflow`: Pure FSM motoru (Native).
+- `mpc.features.expr`: Tip güvenli expression engine.
+- `mpc.features.policy`: Olay bazlı kural değerlendirme.
+- `mpc.features.acl`: RBAC / ABAC ve field masking.
+- `mpc.features.overlay`: Manifest merge / patch operasyonları.
+- `mpc.features.redaction`: PII ve hassas veri gizleme.
 
-| Paket | Ne yapar |
-| --- | --- |
-| `mpc-core-parser` | DSL / YAML / JSON → AST |
-| `mpc-core-validator` | Structural + semantic doğrulama |
-| `mpc-core-expr` | Tip güvenli expression engine (host eval yok) |
-| `mpc-core-policy` | Olay bazlı kural değerlendirme, deny-wins |
-| `mpc-core-acl` | RBAC + opsiyonel ABAC + field masking |
-| `mpc-core-workflow` | Pure FSM + Guard / Auth port binding |
-| `mpc-core-overlay` | Manifest merge / patch operasyonları |
-| `mpc-core-decision-compose` | Birden fazla engine kararını birleştirme |
-| `mpc-core-trace` | Structured audit trace |
+### 3. Tooling (`mpc.tooling`)
+Geliştirme ve doğrulama araçları.
+- `mpc.tooling.validator`: Structural + Semantic denetleyiciler.
+- `mpc.tooling.registry`: Hashed, immutable runtime artifact yönetimi.
+- `mpc.tooling.uischema`: UI generation için şema araçları.
+- `mpc.tooling.conformance`: Uyumluluk test setleri.
+- **MPC Studio**: Tarayıcı tabanlı görsel manifest editörü (`tooling/mpc-studio`).
 
-### Enterprise
-
-| Paket | Ne yapar |
-| --- | --- |
-| `mpc-enterprise-governance` | Signing, attestation, lifecycle |
-| `mpc-enterprise-activation` | Atomic artifact deploy + audit |
-| `mpc-enterprise-quotas` | Tenant bazlı kota ve bütçe yönetimi |
+### 4. Enterprise (`mpc.enterprise`)
+Kurumsal seviye yönetim ve imzalama.
+- `mpc.enterprise.governance`: Signing, attestation ve lifecycle.
 
 ---
 
@@ -160,7 +155,7 @@ Tüm MPC implementasyonları `packages/core-conformance/fixtures/` altındaki
 fixture'ları geçmek zorundadır. Fixture'lar davranışı tanımlar — belgeler değil.
 
 ```bash
-pytest mpc_conformance/
+mpc-conformance run packages/core-conformance/fixtures
 ```
 
 ---

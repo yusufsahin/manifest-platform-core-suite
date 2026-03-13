@@ -2,10 +2,12 @@
 import pytest
 from datetime import datetime, timezone
 
-from mpc.errors import MPCError, MPCBudgetError
-from mpc.meta import DomainMeta, FunctionDef
-from mpc.expr import (
+from mpc.kernel.errors import MPCError, MPCBudgetError
+from mpc.kernel.meta.models import DomainMeta, FunctionDef
+from mpc.features.expr.engine import (
     ExprEngine, ExprResult, typecheck, evaluate,
+)
+from mpc.features.expr.ir import (
     ExprLit, ExprRef, ExprCall, ExprBinOp, ExprUnary, ExprCond,
     ir_from_dict, ir_to_dict,
 )
