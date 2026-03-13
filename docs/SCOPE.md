@@ -2,11 +2,11 @@
 
 ## In scope
 
-- Manifest parsing, validation, canonicalization, and compilation
-- Workflow (FSM), policy, ACL, expression engine
-- Contracts (EventEnvelope, Decision, Error, Intent, Trace)
-- Redaction of **configurable keys** (e.g. `denyKeys`): masking of fields in trace/error/output for **secrets or internal data** — not PII compliance
-- Conformance: contracts, canonical, workflow (and other categories as implemented)
+- Manifest parsing (`mpc.kernel.parser`), validation (`mpc.tooling.validator`), canonicalization (`mpc.kernel.canonical`), and compilation (`mpc.tooling.registry`)
+- Workflow (`mpc.features.workflow`), policy (`mpc.features.policy`), ACL (`mpc.features.acl`), expression engine (`mpc.features.expr`)
+- Contracts (`mpc.kernel.contracts`: EventEnvelope, Decision, Error, Intent, Trace)
+- Redaction of **configurable keys** (e.g. `denyKeys`): masking of fields in trace/error/output via `mpc.features.redaction`
+- Conformance: contracts, canonical, workflow (`mpc.tooling.conformance`)
 - GuardPort / AuthPort interfaces for consuming apps
 
 ## Out of scope

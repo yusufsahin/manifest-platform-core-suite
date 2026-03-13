@@ -1,73 +1,42 @@
-# React + TypeScript + Vite
+# MPC Studio
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MPC Studio is the official visual IDE for the **Manifest Platform Core (MPC) Suite**. It allows developers to author, validate, and visualize manifests directly in the browser.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **PWA / Browser-Native**: Runs entirely in the browser using [Pyodide](https://pyodide.org/) for the MPC runtime.
+- **Visualizer**: Dynamic graph visualization of state machines and policy flows.
+- **Monaco Editor**: Rich code editing with MPC DSL support.
+- **Local File System Access**: Direct integration with your local disk via the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API).
+    - Open local folders and browse manifest files.
+    - Save changes directly back to your local files.
+    - Idempotent "Save as" fallback for non-supported browsers.
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework**: React + Vite
+- **Language**: TypeScript
+- **Runtime**: Pyodide (MPC Python Core)
+- **UI**: Tailwind CSS + Lucide Icons + Framer Motion
+- **Editor**: Monaco Editor
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+```bash
+# Install dependencies
+npm install
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+# Run dev server
+npm run dev
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Build for production
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Local File System Access
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+To use the local file system integration:
+1. Click **Open Folder** in the header.
+2. Grant permission to the browser.
+3. Select files from the sidebar workspace.
+4. Edit and hit **Save** (Ctrl+S).

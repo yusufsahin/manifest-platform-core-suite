@@ -144,3 +144,13 @@ def to_dict(node: ExprNode) -> Any:
         }
 
     raise TypeError(f"Unknown IR node type: {type(node)}")
+
+
+def ir_from_dict(data: Any) -> ExprNode:
+    """Backward-compatible alias for from_dict()."""
+    return from_dict(data)
+
+
+def ir_to_dict(node: ExprNode) -> Any:
+    """Backward-compatible alias for to_dict()."""
+    return to_dict(node)

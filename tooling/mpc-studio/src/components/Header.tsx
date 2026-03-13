@@ -1,6 +1,13 @@
-import { Box, Play, Save, Settings, Share2 } from 'lucide-react';
+import { Box, Play, Save, Settings, Share2, FolderOpen } from 'lucide-react';
 
-const Header = () => {
+interface HeaderProps {
+  onOpenFolder: () => void;
+  onSave: () => void;
+  onRun: () => void;
+  isSaving?: boolean;
+}
+
+const Header = ({ onOpenFolder, onSave, onRun, isSaving }: HeaderProps) => {
   return (
     <header className="h-[56px] glass border-b border-white/5 flex items-center justify-between px-6 z-50">
       <div className="flex items-center gap-3">
@@ -14,16 +21,30 @@ const Header = () => {
       </div>
 
       <div className="flex items-center gap-2">
-        <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-xs font-medium">
+        <button 
+          onClick={onOpenFolder}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-xs font-medium"
+        >
+          <FolderOpen className="w-3.5 h-3.5" />
+          <span>Open Folder</span>
+        </button>
+        <button 
+          onClick={onSave}
+          disabled={isSaving}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-xs font-medium disabled:opacity-50"
+        >
           <Save className="w-3.5 h-3.5" />
-          <span>Save</span>
+          <span>{isSaving ? 'Saving...' : 'Save'}</span>
         </button>
         <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-xs font-medium">
           <Share2 className="w-3.5 h-3.5" />
           <span>Share</span>
         </button>
         <div className="w-px h-4 bg-white/10 mx-2" />
-        <button className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 shadow-lg shadow-violet-600/20 transition-all text-xs font-bold text-white">
+        <button 
+          onClick={onRun}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 shadow-lg shadow-violet-600/20 transition-all text-xs font-bold text-white"
+        >
           <Play className="w-3.5 h-3.5 fill-current" />
           <span>RUN VALIDATION</span>
         </button>

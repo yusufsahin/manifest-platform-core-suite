@@ -272,7 +272,7 @@ class WorkflowEngine:
                     to_state=str(tr.get("to", "")),
                     on=str(tr.get("on", tr.get("to", ""))),
                     guard=tr.get("guard"),
-                    auth_roles=tr.get("auth_roles", []),
+                    auth_roles=tr.get("auth_roles", tr.get("authRoles", [])),
                     on_enter=list(on_enter),
                     on_leave=list(on_leave),
                     rule_type=tr.get("rule_type", "fixed"),
@@ -352,9 +352,72 @@ class WorkflowEngine:
             return result
         finally: self._is_firing = False
 
+    def available_transitions(self) -> list[Transition]:
+        """Return transitions currently available from active states (including inherited paths)."""
+        available: list[Transition] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        for active in self.active_states:
+            curr = active
+            while curr:
+                for tr in self.transitions:
+                    if tr.from_state != curr:
+                        continue
+                    key = (tr.from_state, tr.on, tr.to_state)
+                    if key not in seen:
+                        seen.add(key)
+                        available.append(tr)
+                st = self.states.get(curr)
+                curr = st.parent if st else None
+
+        return available
+
+    def validate(self) -> list[Error]:
+        """Validate workflow structure for missing initial state and invalid references."""
+        errors: list[Error] = []
+
+        if not self.initial_state:
+            errors.append(
+                Error(
+                    code="E_WF_NO_INITIAL",
+                    message="Workflow definition must declare an initial state",
+                    severity="error",
+                )
+            )
+
+        if self.initial_state and self.initial_state not in self.states:
+            errors.append(
+                Error(
+                    code="E_WF_INVALID_INITIAL",
+                    message=f"Initial state '{self.initial_state}' is not declared in states",
+                    severity="error",
+                )
+            )
+
+        for tr in self.transitions:
+            if tr.from_state not in self.states:
+                errors.append(
+                    Error(
+                        code="E_WF_INVALID_TRANSITION",
+                        message=f"Transition source state '{tr.from_state}' is not declared",
+                        severity="error",
+                    )
+                )
+            if tr.to_state not in self.states:
+                errors.append(
+                    Error(
+                        code="E_WF_INVALID_TRANSITION",
+                        message=f"Transition destination state '{tr.to_state}' is not declared",
+                        severity="error",
+                    )
+                )
+
+        return errors
+
     def _process_fire(self, event: str, *, actor_roles: list[str]|None=None, actor_id: str|None=None, context: dict[str, Any]|None=None) -> FireResult:
         reasons, errors, ctx = [], [], context or {}
         active_transitions = {}
+        actor_roles = actor_roles or []
         
         # 1. Find all applicable transitions across all active states
         for active in self.active_states:
@@ -371,7 +434,13 @@ class WorkflowEngine:
         if not active_transitions:
             if event in self.ignored_triggers:
                 return FireResult(new_state=self.current_state, decision=Decision(allow=True, reasons=[Reason(code="R_WF_IGNORED", summary="Ignored")]))
-            errors.append(Error(code="E_WF_UNKNOWN_TRANSITION", message=f"No transition '{event}' found", severity="error"))
+            errors.append(
+                Error(
+                    code="E_WF_UNKNOWN_TRANSITION",
+                    message=f"No transition '{event}' defined from state '{self.current_state}'",
+                    severity="error",
+                )
+            )
             result = FireResult(new_state=self.current_state, decision=Decision(allow=False), errors=errors)
             self._audit(event, actor_id, result, [])
             return result
@@ -379,6 +448,9 @@ class WorkflowEngine:
         # 2. Filter by Auth and Guards
         final_executions = []
         for source, tr in active_transitions.items():
+            if tr.auth_roles and not set(actor_roles).intersection(tr.auth_roles):
+                reasons.append(Reason(code="R_WF_AUTH_DENIED", summary=f"Role denied for {source}"))
+                continue
             if self.auth_port and actor_id and not self.auth_port.authorize(actor_id, tr.on):
                 reasons.append(Reason(code="R_WF_AUTH_DENIED", summary=f"Auth denied for {source}"))
                 continue
@@ -387,10 +459,11 @@ class WorkflowEngine:
                 if self.guard_port: allowed = self.guard_port.check(tr.on, ctx)
                 if allowed and self.expr_engine:
                     try: allowed = bool(self.expr_engine.evaluate(tr.guard, ctx).value)
-                    except: allowed = False
+                    except Exception: allowed = False
             if not allowed:
                 reasons.append(Reason(code="R_WF_GUARD_FAIL", summary=f"Guard fail for {source}"))
                 continue
+            reasons.append(Reason(code="R_WF_GUARD_PASS", summary=f"Guard pass for {source}"))
             final_executions.append((source, tr))
 
         if not final_executions:
@@ -442,7 +515,7 @@ class WorkflowEngine:
         
         result = FireResult(
             new_state=self.current_state, decision=Decision(allow=True, reasons=reasons),
-            intent=Intent(action=event, target=self.current_state),
+            intent=Intent(kind=event, target=self.current_state),
             trace=[f"{s} -> {t.to_state}" for s, t in final_executions],
             errors=errors, actions_executed=total_actions
         )

@@ -26,22 +26,32 @@ MUST / MUST NOT / SHOULD / MAY are used in RFC sense.
 4) Runtime loads only immutable compiled artifacts (enterprise: signed+attested).  
 5) Conformance fixtures define behavior (tests are the constitution).
 
-## 3. Package Set
-Kernel (minimum):
-- core-contracts (schemas for Event/Decision/Error/Intent/Trace)
-- core-canonical (canonical JSON + stable hash + ordering rules)
-- core-ast (canonical AST model)
-- core-errors (error code registry helpers)
+## 3. Package Structure
 
-Feature cores (independent):
-- core-meta, core-parser, core-validator, core-registry
-- core-expr (IR + typecheck + eval + budgets)
-- core-policy, core-acl
-- core-fsm (pure), core-workflow (binding via ports)
-- core-ui-schema, core-overlay, core-decision-compose
-- core-migrate, core-trace, core-conformance
+### Kernel (`mpc.kernel`)
+- `mpc.kernel.contracts`: Event/Decision/Error/Intent/Trace schemas.
+- `mpc.kernel.canonical`: Canonical JSON + stable hash rules.
+- `mpc.kernel.ast`: Canonical AST model.
+- `mpc.kernel.parser`: DSL/YAML/JSON → AST.
+- `mpc.kernel.errors`: Error code registry.
+- `mpc.kernel.meta`: Domain metadata and kind definitions.
 
-Adapters MUST be separate packages (Ports & Adapters).
+### Features (`mpc.features`)
+- `mpc.features.workflow`: Native pure FSM + Port binding.
+- `mpc.features.expr`: Typed expression engine with time/step budgets.
+- `mpc.features.policy`: Event-based rule evaluation (deny-wins).
+- `mpc.features.acl`: RBAC / ABAC and field masking.
+- `mpc.features.overlay`: Manifest merge and variant operations.
+- `mpc.features.redaction`: PII and data privacy controls.
+
+### Tooling (`mpc.tooling`)
+- `mpc.tooling.validator`: Structural and semantic validation.
+- `mpc.tooling.registry`: Hashed, immutable artifact compilation.
+- `mpc.tooling.uischema`: Auto-generated UI schemas from manifests.
+- `mpc.tooling.conformance`: Behavior-defining test fixtures.
+
+### Enterprise (`mpc.enterprise`)
+- `mpc.enterprise.governance`: Signing, attestation, and lifecycle management.
 
 ## 4. Contracts (MUST)
 Implementations MUST comply with JSON Schemas:
@@ -98,9 +108,8 @@ Registry SHOULD provide:
 Exceed MUST return E_BUDGET_EXCEEDED.
 
 ## 12. Workflow (MUST)
-- core-fsm: pure FSM.
-- core-workflow: binding; guards via GuardPort; auth via AuthPort (optional).
-- Outputs Decision + Intent + Trace.
+- `mpc.features.workflow`: Pure FSM and port-bound engine.
+- Guards via `GuardPort`; auth via `AuthPort`.
 
 ## 13. Policy (MUST)
 - Event matcher + expr + decision template.

@@ -24,6 +24,11 @@ function App() {
   const [dsl, setDsl] = useState(DEFAULT_DSL);
   const [result, setResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(null);
+  const [folderHandle, setFolderHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [activeFileName, setActiveFileName] = useState('Main.manifest');
 
   useEffect(() => {
     const validate = async () => {
@@ -39,16 +44,108 @@ function App() {
     validate();
   }, [dsl]);
 
+  const handleOpenFolder = async () => {
+    try {
+      const handle = await window.showDirectoryPicker();
+      setFolderHandle(handle);
+      const manifestFiles: File[] = [];
+      for await (const entry of handle.values()) {
+        if (entry.kind === 'file' && (entry.name.endsWith('.manifest') || entry.name.endsWith('.yaml') || entry.name.endsWith('.dsl'))) {
+          const file = await (entry as FileSystemFileHandle).getFile();
+          manifestFiles.push(file);
+        }
+      }
+      setFiles(manifestFiles);
+      if (manifestFiles.length > 0) {
+        handleFileSelect(manifestFiles[0].name);
+      }
+    } catch (err) {
+      console.error('Failed to open folder', err);
+    }
+  };
+
+  const handleFileSelect = async (fileName: string) => {
+    if (!folderHandle) return;
+    try {
+      const handle = await folderHandle.getFileHandle(fileName);
+      setFileHandle(handle);
+      const file = await handle.getFile();
+      const content = await file.text();
+      setDsl(content);
+      setActiveFileName(fileName);
+    } catch (err) {
+      console.error('Failed to select file', err);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!fileHandle) {
+      // Fallback to download or save as if no handle
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: activeFileName,
+          types: [{ description: 'Manifest File', accept: { 'text/plain': ['.manifest', '.dsl', '.yaml'] } }]
+        });
+        setFileHandle(handle);
+        setActiveFileName(handle.name);
+        const writable = await handle.createWritable();
+        await writable.write(dsl);
+        await writable.close();
+      } catch (err) {
+        console.error('Save cancelled or failed', err);
+      }
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const writable = await fileHandle.createWritable();
+      await writable.write(dsl);
+      await writable.close();
+    } catch (err) {
+      console.error('Failed to save file', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRun = async () => {
+    setIsLoading(true);
+    try {
+      const res = await mpcEngine.parseAndValidate(dsl);
+      setResult(res);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen w-full bg-[#0a0b10] text-[#f3f4f6] font-sans overflow-hidden">
-      <Header />
+      <Header 
+        onOpenFolder={handleOpenFolder} 
+        onSave={handleSave} 
+        onRun={handleRun} 
+        isSaving={isSaving} 
+      />
       
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar dsl={dsl} result={result} />
+        <Sidebar 
+          dsl={dsl} 
+          result={result} 
+          files={files} 
+          activeFile={activeFileName}
+          onFileSelect={handleFileSelect}
+        />
         
         <main className="flex-1 flex overflow-hidden p-4 gap-4 bg-[#0a0b10]">
           <div className="flex-1 glass rounded-2xl overflow-hidden flex flex-col border border-white/10">
-            <ManifestEditor dsl={dsl} onChange={setDsl} />
+            <ManifestEditor 
+              dsl={dsl} 
+              onChange={setDsl} 
+              fileName={activeFileName}
+            />
           </div>
           
           <div className="flex-1 flex flex-col gap-4 overflow-hidden">

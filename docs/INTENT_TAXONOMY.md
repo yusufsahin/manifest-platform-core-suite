@@ -140,4 +140,4 @@ Instructs the adapter to restore a previous artifact version.
 
 Intent deduplication MUST be applied by `(kind, target, idempotencyKey)` tuple.
 If `idempotencyKey` is absent, deduplication is by `(kind, target)` only.
-Duplicate intents within the same Decision MUST be collapsed to one.
+Duplicate intents within the same Decision MUST be collapsed to one (see `mpc.features.compose`).

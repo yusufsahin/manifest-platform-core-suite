@@ -93,38 +93,38 @@ else:
 
 ---
 
-## Kütüphane Seti
+## Kütüphane Yapısı (Hierarchical)
 
-### Kernel (zorunlu)
+MPC artık daha organize bir hiyerarşik yapıya sahiptir:
 
-| Paket | Ne yapar |
-| --- | --- |
-| `mpc-core-contracts` | EventEnvelope, Decision, Error, Intent, Trace modelleri |
-| `mpc-core-canonical` | Deterministik JSON + SHA-256 stable hash |
-| `mpc-core-ast` | Canonical AST modeli |
-| `mpc-core-errors` | Hata kodu registry ve yardımcılar |
+### 1. Kernel (`mpc.kernel`)
+Çekirdek yapı taşları ve parser temelleri.
+- `mpc.kernel.contracts`: EventEnvelope, Decision, Error modelleri.
+- `mpc.kernel.canonical`: Deterministik JSON + Stable Hash.
+- `mpc.kernel.ast`: Canonical AST modelleri.
+- `mpc.kernel.parser`: DSL / YAML / JSON → AST dönüştürücü.
+- `mpc.kernel.errors`: Hata kodu registry.
 
-### Feature (ihtiyaca göre seçin)
+### 2. Features (`mpc.features`)
+Domain spesifik engine'ler ve özellikler.
+- `mpc.features.workflow`: Pure FSM motoru (Native).
+- `mpc.features.expr`: Tip güvenli expression engine.
+- `mpc.features.policy`: Olay bazlı kural değerlendirme.
+- `mpc.features.acl`: RBAC / ABAC ve field masking.
+- `mpc.features.overlay`: Manifest merge / patch operasyonları.
+- `mpc.features.redaction`: PII ve hassas veri gizleme.
 
-| Paket | Ne yapar |
-| --- | --- |
-| `mpc-core-parser` | DSL / YAML / JSON → AST |
-| `mpc-core-validator` | Structural + semantic doğrulama |
-| `mpc-core-expr` | Tip güvenli expression engine (host eval yok) |
-| `mpc-core-policy` | Olay bazlı kural değerlendirme, deny-wins |
-| `mpc-core-acl` | RBAC + opsiyonel ABAC + field masking |
-| `mpc-core-workflow` | Pure FSM + Guard / Auth port binding |
-| `mpc-core-overlay` | Manifest merge / patch operasyonları |
-| `mpc-core-decision-compose` | Birden fazla engine kararını birleştirme |
-| `mpc-core-trace` | Structured audit trace |
+### 3. Tooling (`mpc.tooling`)
+Geliştirme ve doğrulama araçları.
+- `mpc.tooling.validator`: Structural + Semantic denetleyiciler.
+- `mpc.tooling.registry`: Hashed, immutable runtime artifact yönetimi.
+- `mpc.tooling.uischema`: UI generation için şema araçları.
+- `mpc.tooling.conformance`: Uyumluluk test setleri.
+- **MPC Studio**: Tarayıcı tabanlı görsel manifest editörü (`tooling/mpc-studio`).
 
-### Enterprise
-
-| Paket | Ne yapar |
-| --- | --- |
-| `mpc-enterprise-governance` | Signing, attestation, lifecycle |
-| `mpc-enterprise-activation` | Atomic artifact deploy + audit |
-| `mpc-enterprise-quotas` | Tenant bazlı kota ve bütçe yönetimi |
+### 4. Enterprise (`mpc.enterprise`)
+Kurumsal seviye yönetim ve imzalama.
+- `mpc.enterprise.governance`: Signing, attestation ve lifecycle.
 
 ---
 

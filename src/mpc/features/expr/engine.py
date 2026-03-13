@@ -387,6 +387,18 @@ def _eval_binop(
     meta: DomainMeta,
     budget: _Budget,
 ) -> Any:
+    def _to_number(value: Any) -> int | float:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            return value
+        if value is None:
+            return 0
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0
+
     left = _eval_node(node.left, ctx, meta, budget)
     right = _eval_node(node.right, ctx, meta, budget)
     op = node.op
@@ -394,21 +406,21 @@ def _eval_binop(
     if op == "+":
         if isinstance(left, str) and isinstance(right, str):
             return left + right
-        return (left or 0) + (right or 0)
+        return _to_number(left) + _to_number(right)
     if op == "-":
-        return (left or 0) - (right or 0)
+        return _to_number(left) - _to_number(right)
     if op == "*":
-        return (left or 0) * (right or 0)
+        return _to_number(left) * _to_number(right)
     if op == "/":
-        r = right or 0
+        r = _to_number(right)
         if r == 0:
             return None
-        return left / r
+        return _to_number(left) / r
     if op == "%":
-        r = right or 0
+        r = _to_number(right)
         if r == 0:
             return None
-        return (left or 0) % r
+        return _to_number(left) % r
 
     if op == "==":
         return left == right
