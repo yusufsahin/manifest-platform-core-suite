@@ -38,6 +38,7 @@ class ExprResult:
     type: str = "any"
     steps: int = 0
     depth: int = 0
+    trace: list[dict[str, Any]] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -333,8 +334,21 @@ def _eval_node(
     """Recursively evaluate an IR node."""
     budget.tick()
     budget.push_depth()
+    
+    trace: list[dict[str, Any]] | None = ctx.get("__trace__")
+    
     try:
-        return _eval_dispatch(node, ctx, meta, budget)
+        val = _eval_dispatch(node, ctx, meta, budget)
+        
+        if trace is not None:
+            trace.append({
+                "node": node.__class__.__name__,
+                "value": val,
+                "type": _infer_type(node, meta),
+                "depth": budget._depth
+            })
+            
+        return val
     finally:
         budget.pop_depth()
 
@@ -552,6 +566,8 @@ class ExprEngine:
         self,
         expr: str | dict | ExprNode,
         context: dict[str, Any] | None = None,
+        *,
+        enable_trace: bool = False,
     ) -> ExprResult:
         """Evaluate *expr* with optional *context* bindings."""
         node = self._to_node(expr)
@@ -567,6 +583,10 @@ class ExprEngine:
         if self.clock is not None:
             ctx.setdefault("__clock__", self.clock)
         ctx["__budget__"] = budget
+        
+        trace: list[dict[str, Any]] | None = [] if enable_trace else None
+        if trace is not None:
+            ctx["__trace__"] = trace
 
         result_val = _eval_node(node, ctx, self.meta, budget)
         result_type = _infer_type(node, self.meta)
@@ -576,6 +596,7 @@ class ExprEngine:
             type=result_type,
             steps=budget._steps,
             depth=budget._peak_depth,
+            trace=trace,
         )
 
     def _to_node(self, expr: str | dict | ExprNode) -> ExprNode:

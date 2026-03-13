@@ -13,6 +13,7 @@ from typing import Any
 from mpc.kernel.ast.models import ASTNode, ManifestAST
 from mpc.kernel.contracts.models import Decision, Error, Intent, Reason
 from mpc.kernel.meta.models import DomainMeta
+from mpc.features.expr import ExprEngine
 
 
 @dataclass(frozen=True)
@@ -46,8 +47,10 @@ class PolicyEngine:
         intents: list[Intent] = []
         allow = True
 
+        expr_engine = ExprEngine(meta=self.meta)
+
         for pdef in policy_defs:
-            if not _matches_event(pdef, event):
+            if not _matches_event(pdef, event, expr_engine):
                 continue
 
             effect = pdef.properties.get("effect", "allow")
@@ -75,13 +78,21 @@ class PolicyEngine:
         return PolicyResult(allow=allow, reasons=reasons, intents=intents)
 
 
-def _matches_event(policy: ASTNode, event: dict[str, Any]) -> bool:
+def _matches_event(policy: ASTNode, event: dict[str, Any], expr_engine: ExprEngine) -> bool:
     """Check if a policy definition's matcher matches the event."""
     match = policy.properties.get("match")
     if match is None:
         return True
     if not isinstance(match, dict):
         return True
+    
+    # Priority 1: Expression based matching
+    if "expr" in match:
+        expr = match["expr"]
+        res = expr_engine.evaluate(expr, context={"event": event})
+        return bool(res.value)
+
+    # Priority 2: Static key-value matching
     for key, expected in match.items():
         actual = event.get(key)
         if actual != expected:

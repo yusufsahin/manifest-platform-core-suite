@@ -151,17 +151,36 @@ def run_pipeline(dsl_text):
         return {
             "status": "success",
             "namespace": ast.namespace,
-            "ast_hash": hashlib.sha256(dsl_text.encode("utf-8")).hexdigest()[:16],
+            "manifest_version": ast.manifest_version,
+            "ast_hash": hash_ast(ast),
+            "ast": { "defs": [to_dict(d) for d in ast.defs] },
             "errors": [
-                {"code": e.code, "message": e.message, "severity": e.severity}
+                {
+                    "code": e.code, 
+                    "message": e.message, 
+                    "severity": e.severity,
+                    "line": e.source.line if e.source else None,
+                    "col": e.source.col if e.source else None,
+                    "end_line": e.source.line2 if e.source else None,
+                    "end_col": e.source.col2 if e.source else None,
+                }
                 for e in all_errors
             ]
         }
     except Exception as e:
+        # Check if e has source info (MPCError)
+        err_data = {"code": getattr(e, "code", "E_PARSE_SYNTAX"), "message": str(e), "severity": "error"}
+        if hasattr(e, "source") and e.source:
+             err_data.update({
+                "line": e.source.line,
+                "col": e.source.col,
+                "end_line": getattr(e.source, "line2", e.source.line),
+                "end_col": getattr(e.source, "col2", e.source.col)
+             })
         return {
             "status": "error",
             "message": str(e),
-            "errors": [{"code": "E_PARSE_SYNTAX", "message": str(e), "severity": "error"}]
+            "errors": [err_data]
         }
 
 json.dumps(run_pipeline(MPC_INPUT_DSL))
@@ -171,6 +190,57 @@ json.dumps(run_pipeline(MPC_INPUT_DSL))
       }
 
       self.postMessage({ id, type: 'RESULT', payload: JSON.parse(result) });
+    } else if (type === 'MERMAID_EXPORT') {
+      const dsl = payload;
+      py.globals.set('MPC_INPUT_DSL', dsl);
+      try {
+        const mermaid = await py.runPythonAsync(`
+from mpc.kernel.parser import parse
+from mpc.features.workflow import WorkflowEngine
+ast = parse(MPC_INPUT_DSL)
+wf_node = next((n for n in ast.defs if n.kind == "Workflow"), None)
+if wf_node:
+    engine = WorkflowEngine.from_ast_node(wf_node)
+    engine.to_mermaid()
+else:
+    ""
+`);
+        self.postMessage({ id, type: 'MERMAID_RESULT', payload: mermaid });
+      } finally {
+        py.globals.delete('MPC_INPUT_DSL');
+      }
+    } else if (type === 'EVALUATE_EXPR') {
+      const { expr, context, enable_trace } = payload;
+      py.globals.set('EXPR', expr);
+      py.globals.set('CTX', JSON.stringify(context || {}));
+      
+      try {
+        const result = await py.runPythonAsync(`
+import json
+from mpc.features.expr import ExprEngine
+from mpc.kernel.meta.models import DomainMeta, FunctionDef
+
+# permissive meta for eval
+meta = DomainMeta(allowed_functions=[
+    FunctionDef(name="len", args=["string|array"], returns="int"),
+    FunctionDef(name="now", returns="string"),
+    FunctionDef(name="concat", args=["any", "any"], returns="string"),
+])
+engine = ExprEngine(meta=meta)
+ctx = json.loads(CTX)
+res = engine.evaluate(EXPR, context=ctx, enable_trace=${enable_trace ? 'True' : 'False'})
+
+json.dumps({
+    "value": res.value,
+    "type": res.type,
+    "trace": res.trace if hasattr(res, 'trace') else None
+})
+`);
+        self.postMessage({ id, type: 'EVAL_RESULT', payload: JSON.parse(result) });
+      } finally {
+        py.globals.delete('EXPR');
+        py.globals.delete('CTX');
+      }
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

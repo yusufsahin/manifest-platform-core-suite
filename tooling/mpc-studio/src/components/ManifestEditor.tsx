@@ -1,12 +1,55 @@
-import Editor from '@monaco-editor/react';
+import { useEffect, useRef } from 'react';
+import Editor, { type OnMount } from '@monaco-editor/react';
+
+interface ValidationError {
+  code: string;
+  message: string;
+  severity: string;
+  line?: number;
+  col?: number;
+  end_line?: number;
+  end_col?: number;
+}
 
 interface ManifestEditorProps {
   dsl: string;
   onChange: (value: string) => void;
   fileName: string;
+  errors?: ValidationError[];
 }
 
-const ManifestEditor = ({ dsl, onChange, fileName }: ManifestEditorProps) => {
+const ManifestEditor = ({ dsl, onChange, fileName, errors = [] }: ManifestEditorProps) => {
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (editorRef.current && monacoRef.current) {
+      const markers = errors
+        .filter(err => err.line !== undefined)
+        .map(err => ({
+          startLineNumber: err.line!,
+          startColumn: err.col! + 1, // Monaco is 1-based
+          endLineNumber: err.end_line || err.line!,
+          endColumn: (err.end_col || err.col!) + 1,
+          message: `[${err.code}] ${err.message}`,
+          severity: err.severity === 'error' 
+            ? monacoRef.current.MarkerSeverity.Error 
+            : monacoRef.current.MarkerSeverity.Warning,
+        }));
+
+      monacoRef.current.editor.setModelMarkers(
+        editorRef.current.getModel(),
+        'mpc',
+        markers
+      );
+    }
+  }, [errors]);
+
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+  };
+
   return (
     <div className="h-full w-full flex flex-col">
       <div className="h-10 border-b border-white/5 flex items-center px-4 justify-between bg-white/[0.02]">
@@ -19,10 +62,11 @@ const ManifestEditor = ({ dsl, onChange, fileName }: ManifestEditorProps) => {
       <div className="flex-1">
         <Editor
           height="100%"
-          defaultLanguage="python" // Temporary until custom language
+          defaultLanguage="python"
           theme="vs-dark"
           value={dsl}
           onChange={(value) => onChange(value || '')}
+          onMount={handleEditorDidMount}
           options={{
             minimap: { enabled: false },
             fontSize: 13,
@@ -40,7 +84,7 @@ const ManifestEditor = ({ dsl, onChange, fileName }: ManifestEditorProps) => {
               inherit: true,
               rules: [],
               colors: {
-                'editor.background': '#12141c00', // Transparent
+                'editor.background': '#12141c00',
               }
             });
           }}

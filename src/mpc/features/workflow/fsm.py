@@ -340,17 +340,33 @@ class WorkflowEngine:
         self.is_active = False
 
     def fire(self, event: str, *, actor_roles: list[str]|None=None, actor_id: str|None=None, context: dict[str, Any]|None=None) -> FireResult:
+        """Fire a transition and handle the event queue for nested/chained transitions."""
         if self._is_firing:
-            self._event_queue.append({"event": event, "actor_roles": actor_roles, "actor_id": actor_id, "context": context})
-            return FireResult(new_state=self.current_state, decision=Decision(allow=True, reasons=[Reason(code="R_WF_QUEUED", summary="Queued")]))
+            self._event_queue.append({
+                "event": event,
+                "actor_roles": actor_roles,
+                "actor_id": actor_id,
+                "context": context
+            })
+            return FireResult(
+                new_state=self.current_state,
+                decision=Decision(
+                    allow=True,
+                    reasons=[Reason(code="R_WF_QUEUED", summary="Event queued during firing")]
+                )
+            )
+
         self._is_firing = True
         try:
             result = self._process_fire(event, actor_roles=actor_roles, actor_id=actor_id, context=context)
+            # Process any events that were queued during this firing cycle
             while self._event_queue:
                 q = self._event_queue.pop(0)
+                # Note: We typically return the first result, but sequels have side effects
                 self._process_fire(q["event"], actor_roles=q["actor_roles"], actor_id=q["actor_id"], context=q["context"])
             return result
-        finally: self._is_firing = False
+        finally:
+            self._is_firing = False
 
     def available_transitions(self) -> list[Transition]:
         """Return transitions currently available from active states (including inherited paths)."""
@@ -574,23 +590,40 @@ class WorkflowEngine:
         self.is_active = state_data.get("is_active", False)
 
     def to_mermaid(self) -> str:
-        """Export the workflow as a Mermaid diagram with parallel support."""
-        lines, sub = ["graph TD"], {}
-        for s_name, st in self.states.items():
-            p = st.parent or "root"
-            if p not in sub: sub[p] = []
-            sub[p].append(s_name)
+        """Export the workflow as a Mermaid diagram with hierarchy and styling."""
+        lines = ["graph TD"]
+        lines.append("  accTitle: " + self.initial_state + " Workflow")
         
-        def _render(p_name, indent):
-            if p_name not in sub: return
-            for c in sub[p_name]:
-                st = self.states[c]
-                if c in sub:
-                    lines.append(f"{indent}subgraph {'[Parallel] ' if st.is_parallel else ''}{c}")
-                    _render(c, indent + "  ")
+        # Organize states into hierarchy
+        hierarchy: dict[str, list[str]] = {}
+        for name, st in self.states.items():
+            parent = st.parent or "root"
+            hierarchy.setdefault(parent, []).append(name)
+
+        def _render_nest(p_name: str, indent: str):
+            if p_name not in hierarchy:
+                return
+            for child in hierarchy[p_name]:
+                st = self.states[child]
+                if child in hierarchy:
+                    label = f"{'[Parallel] ' if st.is_parallel else ''}{child}"
+                    lines.append(f"{indent}subgraph {child} [\"{label}\"]")
+                    _render_nest(child, indent + "  ")
                     lines.append(f"{indent}end")
-                else: lines.append(f"{indent}{c}")
-        
-        _render("root", "  ")
-        for tr in self.transitions: lines.append(f"  {tr.from_state} -- {tr.on} --> {tr.to_state}")
+                else:
+                    lines.append(f"{indent}{child}")
+
+        _render_nest("root", "  ")
+
+        # Add transitions
+        for tr in self.transitions:
+            label = tr.on
+            if tr.guard:
+                label += f" [{tr.guard}]"
+            lines.append(f"  {tr.from_state} -- \"{label}\" --> {tr.to_state}")
+
+        # Add styling for active states if needed (though usually static export)
+        for s in self.active_states:
+            lines.append(f"  style {s} fill:#8b5cf6,stroke:#a78bfa,stroke-width:2px,color:#fff")
+
         return "\n".join(lines)

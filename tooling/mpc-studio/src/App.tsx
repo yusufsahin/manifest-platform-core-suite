@@ -4,6 +4,8 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import ManifestEditor from './components/ManifestEditor';
 import Visualizer from './components/Visualizer';
+import DebugPanel from './components/DebugPanel';
+import DomainRegistry from './components/DomainRegistry';
 import { StatusBadge } from './components/StatusBadge';
 
 const VALIDATION_DEBOUNCE_MS = 350;
@@ -12,6 +14,10 @@ interface ValidationError {
   code: string;
   message: string;
   severity: string;
+  line?: number;
+  col?: number;
+  end_line?: number;
+  end_col?: number;
 }
 
 interface ValidationResult {
@@ -19,6 +25,9 @@ interface ValidationResult {
   namespace?: string;
   ast_hash?: string;
   errors: ValidationError[];
+  ast?: {
+    defs: Array<{ kind: string; id: string; name?: string; properties: any }>;
+  };
 }
 
 const DEFAULT_DSL = `@schema 1
@@ -44,6 +53,10 @@ function App() {
   const [folderHandle, setFolderHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [activeFileName, setActiveFileName] = useState('Main.manifest');
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugResult, setDebugResult] = useState<{ value: any; type: string | null; trace: any[] | null } | null>(null);
+  const [activeTab, setActiveTab ] = useState<'preview' | 'debug'>('preview');
+  const [sidebarTab, setSidebarTab] = useState('editor');
   const validationTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -56,6 +69,12 @@ function App() {
       try {
         const res = await mpcEngine.parseAndValidate(dsl) as ValidationResult;
         setResult(res);
+
+        if (debugMode && res.status === 'success') {
+           // Auto-run a sample eval for now to show trace
+           const evalRes = await mpcEngine.evaluateExpr('concat("User: ", data.user)', { data: { user: 'yusuf' } }, true);
+           setDebugResult(evalRes);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -161,6 +180,8 @@ function App() {
         onSave={handleSave} 
         onRun={handleRun} 
         isSaving={isSaving} 
+        debugMode={debugMode}
+        onToggleDebug={() => setDebugMode(!debugMode)}
       />
       
       <div className="flex flex-1 overflow-hidden">
@@ -170,20 +191,63 @@ function App() {
           files={files} 
           activeFile={activeFileName}
           onFileSelect={handleFileSelect}
+          activeTab={sidebarTab} 
+          onTabChange={setSidebarTab} 
         />
         
-        <main className="flex-1 flex overflow-hidden p-4 gap-4 bg-[#0a0b10]">
-          <div className="flex-1 glass rounded-2xl overflow-hidden flex flex-col border border-white/10">
-            <ManifestEditor 
-              dsl={dsl} 
-              onChange={setDsl} 
-              fileName={activeFileName}
-            />
+        <main className="flex-1 flex gap-4 p-4 overflow-hidden">
+          <div className="w-[45%] flex flex-col gap-4 overflow-hidden">
+            <div className="flex-1 glass rounded-2xl overflow-hidden border border-white/10 relative">
+              {sidebarTab === 'editor' ? (
+                <ManifestEditor 
+                  dsl={dsl} 
+                  onChange={setDsl}
+                  fileName={activeFileName}
+                  errors={result?.status === 'error' ? (result.errors as any[]) : []}
+                />
+              ) : sidebarTab === 'registry' ? (
+                <DomainRegistry 
+                  definitions={result?.status === 'success' ? (result.ast?.defs || []) : []}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">
+                  Feature '{sidebarTab}' coming soon
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-            <div className="flex-1 glass rounded-2xl overflow-hidden border border-white/10 relative">
-              <Visualizer dsl={dsl} />
+            <div className="flex-1 glass rounded-2xl overflow-hidden border border-white/10 relative flex flex-col">
+              <div className="flex border-b border-white/5 bg-white/[0.02] p-1 gap-1">
+                <button 
+                  onClick={() => setActiveTab('preview')}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    activeTab === 'preview' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Preview
+                </button>
+                <button 
+                  onClick={() => setActiveTab('debug')}
+                  className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    activeTab === 'debug' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Debugger
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {activeTab === 'preview' ? (
+                  <Visualizer dsl={dsl} />
+                ) : (
+                  <DebugPanel 
+                    trace={debugResult?.trace || null} 
+                    value={debugResult?.value} 
+                    type={debugResult?.type || null}
+                  />
+                )}
+              </div>
             </div>
             
             <div className="h-48 glass rounded-2xl p-4 border border-white/10 overflow-auto">

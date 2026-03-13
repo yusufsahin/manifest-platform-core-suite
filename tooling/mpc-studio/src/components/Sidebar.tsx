@@ -1,9 +1,12 @@
-import { Database, FileCode, Layers, ShieldCheck, Activity } from 'lucide-react';
+import { Database, FileText, Layers, Shield, Workflow } from 'lucide-react';
 
 interface ValidationSummary {
   status?: string;
   ast_hash?: string;
   errors?: unknown[];
+  ast?: {
+    defs: any[];
+  };
 }
 
 interface SidebarProps {
@@ -12,15 +15,17 @@ interface SidebarProps {
   files: File[];
   activeFile: string;
   onFileSelect: (fileName: string) => void;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
 }
 
-const Sidebar = ({ result, files, activeFile, onFileSelect }: SidebarProps) => {
+const Sidebar = ({ result, files, activeFile, onFileSelect, activeTab, onTabChange }: SidebarProps) => {
   const menuItems = [
-    { icon: FileCode, label: 'Manifest Editor', active: true },
-    { icon: Database, label: 'Domain Registry', active: false },
-    { icon: ShieldCheck, label: 'Security Policies', active: false },
-    { icon: Activity, label: 'Workflow Engine', active: false },
-    { icon: Layers, label: 'Overlay System', active: false },
+    { id: 'editor', icon: FileText, label: 'Manifest Editor' },
+    { id: 'registry', icon: Database, label: 'Domain Registry' },
+    { id: 'security', icon: Shield, label: 'Security Policies' },
+    { id: 'workflow', icon: Workflow, label: 'Workflow Engine' },
+    { id: 'overlays', icon: Layers, label: 'Overlay System' },
   ];
 
   return (
@@ -28,17 +33,18 @@ const Sidebar = ({ result, files, activeFile, onFileSelect }: SidebarProps) => {
       <div className="p-6">
         <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-4">Navigation</h2>
         <div className="space-y-1 mb-6">
-          {menuItems.map((item, i) => (
+          {menuItems.map((item) => (
             <button
-              key={i}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all ${
-                item.active 
-                  ? 'bg-violet-600/10 text-violet-400 border border-violet-500/20 shadow-inner' 
-                  : 'text-gray-400 hover:bg-white/5 hover:text-gray-300 border border-transparent'
+              key={item.id}
+              onClick={() => onTabChange(item.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group ${
+                activeTab === item.id 
+                  ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20 shadow-lg shadow-violet-500/5' 
+                  : 'text-gray-500 hover:bg-white/5 hover:text-gray-300 border border-transparent'
               }`}
             >
-              <item.icon className="w-3.5 h-3.5" />
-              <span className="text-[11px] font-semibold">{item.label}</span>
+              <item.icon className={`w-4 h-4 transition-colors ${activeTab === item.id ? 'text-violet-400' : 'group-hover:text-gray-300'}`} />
+              <span className="text-[11px] font-semibold tracking-wide">{item.label}</span>
             </button>
           ))}
         </div>
@@ -75,8 +81,8 @@ const Sidebar = ({ result, files, activeFile, onFileSelect }: SidebarProps) => {
               <p className="text-[10px] font-mono text-violet-400/80 truncate">{result?.ast_hash || 'pending...'}</p>
             </div>
             <div>
-              <p className="text-[9px] text-gray-600 mb-1 uppercase">Dependencies</p>
-              <p className="text-[10px] font-bold text-gray-300">0 Total</p>
+              <p className="text-[9px] text-gray-600 mb-1 uppercase">Definitions</p>
+              <p className="text-[10px] font-bold text-gray-300">{result?.ast?.defs?.length || 0} Total</p>
             </div>
           </div>
         </div>

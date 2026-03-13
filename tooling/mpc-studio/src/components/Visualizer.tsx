@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import mermaid from 'mermaid';
+import { mpcEngine } from '../engine/mpc-engine';
 
 mermaid.initialize({
   startOnLoad: true,
@@ -18,15 +19,6 @@ interface VisualizerProps {
   dsl: string;
 }
 
-function sanitizeNodeId(value: string): string {
-  const cleaned = value.trim().replace(/[^A-Za-z0-9_]/g, '_');
-  return cleaned.length > 0 ? cleaned : 'state_unknown';
-}
-
-function sanitizeEdgeLabel(value: string): string {
-  // Keep labels readable while blocking Mermaid/HTML control characters.
-  return value.trim().replace(/[^A-Za-z0-9 _-]/g, '_').slice(0, 80);
-}
 
 const Visualizer = ({ dsl }: VisualizerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,23 +27,12 @@ const Visualizer = ({ dsl }: VisualizerProps) => {
     const renderChart = async () => {
       if (!containerRef.current) return;
 
-      // Extract Workflow for simple visualization
-      // In reality, this would be computed by MPC Engine (from_ast_node -> to_mermaid)
       try {
-        const workflowMatch = dsl.match(/states:\s*\[([^\]]+)\]/);
-        const transitionsMatch = [...dsl.matchAll(/{"from":\s*"([^"]+)",\s*"on":\s*"([^"]+)",\s*"to":\s*"([^"]+)"}/g)];
-
+        const graphDefinition = await mpcEngine.getMermaid(dsl);
+        
         containerRef.current.replaceChildren();
 
-        if (workflowMatch && transitionsMatch.length > 0) {
-          let graphDefinition = 'graph TD\n';
-          transitionsMatch.forEach(m => {
-            const from = sanitizeNodeId(m[1]);
-            const on = sanitizeEdgeLabel(m[2]);
-            const to = sanitizeNodeId(m[3]);
-            graphDefinition += `    ${from} -- ${on} --> ${to}\n`;
-          });
-
+        if (graphDefinition && graphDefinition.trim().length > 0) {
           const mermaidNode = document.createElement('div');
           mermaidNode.className = 'mermaid';
           mermaidNode.textContent = graphDefinition;

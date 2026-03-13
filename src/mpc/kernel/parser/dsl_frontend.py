@@ -106,6 +106,10 @@ class _ASTBuilder(Transformer):
         source = SourceMap(
             line=tree.meta.line if tree.meta else None,
             col=tree.meta.column if tree.meta else None,
+            span=SourceSpan(
+                line2=tree.meta.end_line if tree.meta else None,
+                col2=tree.meta.end_column if tree.meta else None,
+            ) if tree.meta and tree.meta.end_line else None
         )
 
         return ASTNode(

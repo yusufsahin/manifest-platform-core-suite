@@ -103,3 +103,22 @@ def _diff_events(old: DomainMeta, new: DomainMeta, result: MetaDiffResult) -> No
         result.breaking.append(f"Allowed event '{ev}' removed")
     for ev in sorted(new_events - old_events):
         result.non_breaking.append(f"Allowed event '{ev}' added")
+def detect_drift(ast: ManifestAST, meta: DomainMeta) -> list[str]:
+    """Detect 'drift' where a manifest uses kinds/props not defined in meta."""
+    drifts = []
+    meta_kinds = {k.name: k for k in meta.kinds}
+    
+    for node in ast.defs:
+        if node.kind not in meta_kinds:
+            drifts.append(f"Definition '{node.id}': Kind '{node.kind}' is not in DomainMeta")
+            continue
+            
+        kind_def = meta_kinds[node.kind]
+        allowed_props = set(kind_def.required_props) | set(kind_def.optional_props)
+        # Assuming for now that any property not in 'allowed_props' is a drift
+        # (even if strict validation isn't enforced in the validator)
+        for prop in node.properties:
+            if prop not in allowed_props:
+                drifts.append(f"Definition '{node.id}': Property '{prop}' is not defined for kind '{node.kind}'")
+                
+    return drifts

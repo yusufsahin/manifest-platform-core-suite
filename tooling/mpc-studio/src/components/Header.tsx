@@ -1,13 +1,15 @@
-import { Box, Play, Save, Settings, Share2, FolderOpen } from 'lucide-react';
+import { Box, Play, Save, Settings, FolderOpen, Bug } from 'lucide-react';
 
 interface HeaderProps {
   onOpenFolder: () => void;
   onSave: () => void;
   onRun: () => void;
   isSaving?: boolean;
+  debugMode?: boolean;
+  onToggleDebug?: () => void;
 }
 
-const Header = ({ onOpenFolder, onSave, onRun, isSaving }: HeaderProps) => {
+const Header = ({ onOpenFolder, onSave, onRun, isSaving, debugMode, onToggleDebug }: HeaderProps) => {
   return (
     <header className="h-[56px] glass border-b border-white/5 flex items-center justify-between px-6 z-50">
       <div className="flex items-center gap-3">
@@ -36,9 +38,17 @@ const Header = ({ onOpenFolder, onSave, onRun, isSaving }: HeaderProps) => {
           <Save className="w-3.5 h-3.5" />
           <span>{isSaving ? 'Saving...' : 'Save'}</span>
         </button>
-        <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-all text-xs font-medium">
-          <Share2 className="w-3.5 h-3.5" />
-          <span>Share</span>
+        <button 
+          onClick={onToggleDebug}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium ${
+            debugMode 
+              ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+              : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10'
+          }`}
+          title="Toggle Debug Mode (Enables Expression Tracing)"
+        >
+          <Bug className="w-3.5 h-3.5" />
+          <span>Debug Mode</span>
         </button>
         <div className="w-px h-4 bg-white/10 mx-2" />
         <button 
