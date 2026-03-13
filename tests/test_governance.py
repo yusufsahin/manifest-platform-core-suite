@@ -52,6 +52,24 @@ class TestArtifactBundle:
         b2 = ArtifactBundle(registry=reg, metadata=meta)
         assert b1.bundle_hash == b2.bundle_hash
 
+    def test_verify_integrity_no_expected_hash(self):
+        reg = _compiled()
+        meta = BundleMetadata(builder="ci", built_at="2026-01-01T00:00:00Z")
+        bundle = ArtifactBundle(registry=reg, metadata=meta)
+        assert bundle.verify_integrity() is True
+
+    def test_verify_integrity_correct_hash(self):
+        reg = _compiled()
+        meta = BundleMetadata(builder="ci", built_at="2026-01-01T00:00:00Z")
+        bundle = ArtifactBundle(registry=reg, metadata=meta)
+        assert bundle.verify_integrity(bundle.bundle_hash) is True
+
+    def test_verify_integrity_wrong_hash(self):
+        reg = _compiled()
+        meta = BundleMetadata(builder="ci", built_at="2026-01-01T00:00:00Z")
+        bundle = ArtifactBundle(registry=reg, metadata=meta)
+        assert bundle.verify_integrity("wronghash") is False
+
 
 class TestSigningPort:
     def test_sign_and_verify(self):
@@ -184,3 +202,46 @@ class TestQuotaEnforcer:
         usage = enforcer.usage
         assert usage["parse"] == 5
         assert usage["compile"] == 2
+
+    def test_exceeds_defs_limit(self):
+        enforcer = QuotaEnforcer(limits=QuotaLimits(max_total_defs=3))
+        assert enforcer.check_defs(3) is None
+        error = enforcer.check_defs(1)
+        assert error is not None
+        assert error.code == "E_QUOTA_EXCEEDED"
+
+    def test_usage_nodes_and_defs(self):
+        enforcer = QuotaEnforcer(limits=QuotaLimits())
+        enforcer.check_nodes(10)
+        enforcer.check_defs(4)
+        assert enforcer.usage["nodes"] == 10
+        assert enforcer.usage["defs"] == 4
+
+
+class TestActivationExceptions:
+    def test_verify_exception_triggers_rollback(self):
+        proto = ActivationProtocol()
+        def boom(h: str) -> bool:
+            raise RuntimeError("verify service down")
+        result = proto.activate("hash123", verify_fn=boom)
+        assert result.success is False
+        assert result.rollback_performed is True
+        assert any(e.code == "E_GOV_SIGNATURE_INVALID" for e in result.errors)
+        assert "verify service down" in result.errors[0].message
+
+    def test_attest_exception_triggers_rollback(self):
+        proto = ActivationProtocol()
+        def boom(h: str) -> bool:
+            raise ValueError("attestation service unavailable")
+        result = proto.activate("hash123", attest_fn=boom)
+        assert result.success is False
+        assert result.rollback_performed is True
+        assert any(e.code == "E_GOV_ATTESTATION_MISSING" for e in result.errors)
+
+    def test_audit_exception_does_not_fail_activation(self):
+        proto = ActivationProtocol()
+        def bad_audit(h: str) -> None:
+            raise RuntimeError("audit log unavailable")
+        result = proto.activate("hash123", audit_fn=bad_audit)
+        assert result.success is True
+        assert proto.active_artifact_hash == "hash123"

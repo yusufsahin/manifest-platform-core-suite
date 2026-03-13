@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "code": "E_VALID_DUPLICATE_DEF",
+      "message": "Duplicate definition: kind='Policy', id='p1'",
+      "severity": "error"
+    }
+  ]
+}

@@ -298,8 +298,9 @@ class TestEvaluate:
         assert result.value == 2.5
 
     def test_ir_binop_divide_by_zero(self):
-        result = evaluate({"op": "/", "left": {"lit": 10}, "right": {"lit": 0}}, _meta())
-        assert result.value is None
+        with pytest.raises(Exception) as exc_info:
+            evaluate({"op": "/", "left": {"lit": 10}, "right": {"lit": 0}}, _meta())
+        assert "DIV_BY_ZERO" in str(exc_info.value)
 
     def test_ir_binop_modulo(self):
         result = evaluate({"op": "%", "left": {"lit": 10}, "right": {"lit": 3}}, _meta())
@@ -450,6 +451,38 @@ class TestBudget:
                 max_regex_ops=0,
             )
         assert exc_info.value.code == "E_EXPR_REGEX_LIMIT"
+
+    def test_div_by_zero_raises(self):
+        with pytest.raises(MPCError) as exc_info:
+            evaluate(
+                {"op": "/", "left": {"lit": 10}, "right": {"lit": 0}},
+                _meta(),
+            )
+        assert exc_info.value.code == "E_EXPR_DIV_BY_ZERO"
+
+    def test_mod_by_zero_raises(self):
+        with pytest.raises(MPCError) as exc_info:
+            evaluate(
+                {"op": "%", "left": {"lit": 10}, "right": {"lit": 0}},
+                _meta(),
+            )
+        assert exc_info.value.code == "E_EXPR_DIV_BY_ZERO"
+
+    def test_invalid_regex_raises(self):
+        with pytest.raises(MPCError) as exc_info:
+            evaluate(
+                {"fn": "regex", "args": [{"lit": "hello"}, {"lit": "[invalid("}]},
+                _meta(),
+            )
+        assert exc_info.value.code == "E_EXPR_INVALID_REGEX"
+
+    def test_invalid_regex_in_matches_raises(self):
+        with pytest.raises(MPCError) as exc_info:
+            evaluate(
+                {"op": "matches", "left": {"lit": "hello"}, "right": {"lit": "[invalid("}},
+                _meta(),
+            )
+        assert exc_info.value.code == "E_EXPR_INVALID_REGEX"
 
     def test_step_limit_message(self):
         with pytest.raises(MPCBudgetError) as exc_info:

@@ -258,15 +258,19 @@ class WorkflowEngine:
         for name in states:
             states[name] = FSMState(
                 name=name, is_initial=(name in initials), is_final=(name in finals),
-                parent=states[name].parent, on_enter=states[name].on_enter, 
-                on_leave=states[name].on_leave, is_parallel=states[name].is_parallel
+                parent=states[name].parent,
+                on_enter=states[name].on_enter,
+                on_leave=states[name].on_leave,
+                on_activate=states[name].on_activate,
+                on_deactivate=states[name].on_deactivate,
+                is_parallel=states[name].is_parallel,
             )
 
         transitions: list[Transition] = []
         for tr in node.properties.get("transitions", []):
             if isinstance(tr, dict):
-                on_enter = tr.get("on_enter") or []
-                on_leave = tr.get("on_leave") or []
+                on_enter = tr.get("on_enter") or tr.get("onEnter") or []
+                on_leave = tr.get("on_leave") or tr.get("onLeave") or []
                 transitions.append(Transition(
                     from_state=str(tr.get("from", "")),
                     to_state=str(tr.get("to", "")),
@@ -368,16 +372,75 @@ class WorkflowEngine:
         finally:
             self._is_firing = False
 
-    def available_transitions(self) -> list[Transition]:
+    def get_initial_state(self) -> str:
+        """Return the configured initial state."""
+        return self.initial_state
+
+    def to_spec(self):
+        """Export an immutable compatibility WorkflowSpec for adapter consumption."""
+        from mpc.workflow.spec import TransitionSpec, WorkflowSpec as AdapterWorkflowSpec
+
+        return AdapterWorkflowSpec(
+            states=tuple(self.states.keys()),
+            initial=self.initial_state,
+            finals=frozenset(
+                name for name, state in self.states.items() if state.is_final
+            ),
+            transitions=tuple(
+                TransitionSpec(
+                    from_state=transition.from_state,
+                    to_state=transition.to_state,
+                    on=transition.on,
+                    guard=transition.guard,
+                    auth_roles=tuple(transition.auth_roles),
+                    on_enter=tuple(transition.on_enter),
+                    on_leave=tuple(transition.on_leave),
+                )
+                for transition in self.transitions
+            ),
+        )
+
+    def is_valid_transition(self, from_state: str, to_state: str) -> bool:
+        """Check whether a direct transition between two states exists."""
+        return any(
+            transition.from_state == from_state and transition.to_state == to_state
+            for transition in self.transitions
+        )
+
+    def get_transition_actions(
+        self, from_state: str, to_state: str
+    ) -> dict[str, list[str]]:
+        """Return the transition-level enter/leave actions for a path."""
+        for transition in self.transitions:
+            if (
+                transition.from_state == from_state
+                and transition.to_state == to_state
+            ):
+                return {
+                    "on_leave": list(transition.on_leave),
+                    "on_enter": list(transition.on_enter),
+                }
+        return {"on_leave": [], "on_enter": []}
+
+    def available_transitions(
+        self, *, actor_roles: list[str] | None = None
+    ) -> list[Transition]:
         """Return transitions currently available from active states (including inherited paths)."""
         available: list[Transition] = []
         seen: set[tuple[str, str, str]] = set()
+        role_set = set(actor_roles or [])
 
         for active in self.active_states:
             curr = active
             while curr:
                 for tr in self.transitions:
                     if tr.from_state != curr:
+                        continue
+                    if (
+                        actor_roles is not None
+                        and tr.auth_roles
+                        and not role_set.intersection(tr.auth_roles)
+                    ):
                         continue
                     key = (tr.from_state, tr.on, tr.to_state)
                     if key not in seen:
@@ -414,16 +477,16 @@ class WorkflowEngine:
             if tr.from_state not in self.states:
                 errors.append(
                     Error(
-                        code="E_WF_INVALID_TRANSITION",
-                        message=f"Transition source state '{tr.from_state}' is not declared",
+                        code="E_WF_UNKNOWN_STATE",
+                        message=f"Transition references unknown state '{tr.from_state}'",
                         severity="error",
                     )
                 )
             if tr.to_state not in self.states:
                 errors.append(
                     Error(
-                        code="E_WF_INVALID_TRANSITION",
-                        message=f"Transition destination state '{tr.to_state}' is not declared",
+                        code="E_WF_UNKNOWN_STATE",
+                        message=f"Transition references unknown state '{tr.to_state}'",
                         severity="error",
                     )
                 )
@@ -433,7 +496,7 @@ class WorkflowEngine:
     def _process_fire(self, event: str, *, actor_roles: list[str]|None=None, actor_id: str|None=None, context: dict[str, Any]|None=None) -> FireResult:
         reasons, errors, ctx = [], [], context or {}
         active_transitions = {}
-        actor_roles = actor_roles or []
+        role_set = set(actor_roles or [])
         
         # 1. Find all applicable transitions across all active states
         for active in self.active_states:
@@ -464,22 +527,114 @@ class WorkflowEngine:
         # 2. Filter by Auth and Guards
         final_executions = []
         for source, tr in active_transitions.items():
-            if tr.auth_roles and not set(actor_roles).intersection(tr.auth_roles):
-                reasons.append(Reason(code="R_WF_AUTH_DENIED", summary=f"Role denied for {source}"))
+            if (
+                actor_roles is not None
+                and tr.auth_roles
+                and not role_set.intersection(tr.auth_roles)
+            ):
+                errors.append(
+                    Error(
+                        code="E_WF_AUTH_DENIED",
+                        message=f"Actor lacks required roles for '{event}'",
+                        severity="error",
+                    )
+                )
+                reasons.append(
+                    Reason(
+                        code="R_WF_AUTH_DENIED",
+                        summary=f"Actor lacks required roles for '{event}'",
+                    )
+                )
                 continue
-            if self.auth_port and actor_id and not self.auth_port.authorize(actor_id, tr.on):
-                reasons.append(Reason(code="R_WF_AUTH_DENIED", summary=f"Auth denied for {source}"))
-                continue
+            if self.auth_port and actor_id is not None:
+                try:
+                    auth_allowed = self.auth_port.authorize(actor_id, tr.on)
+                except Exception as exc:
+                    reasons.append(
+                        Reason(
+                            code="R_WF_AUTH_DENIED",
+                            summary=f"Auth denied for '{event}'",
+                        )
+                    )
+                    errors.append(
+                        Error(
+                            code="E_WF_AUTH_DENIED",
+                            message=(
+                                f"AuthPort raised an exception for '{event}': {exc}"
+                            ),
+                            severity="error",
+                        )
+                    )
+                    continue
+                if not auth_allowed:
+                    errors.append(
+                        Error(
+                            code="E_WF_AUTH_DENIED",
+                            message=f"Auth denied for '{event}'",
+                            severity="error",
+                        )
+                    )
+                    reasons.append(
+                        Reason(
+                            code="R_WF_AUTH_DENIED",
+                            summary=f"Auth denied for '{event}'",
+                        )
+                    )
+                    continue
             allowed = True
             if tr.guard:
-                if self.guard_port: allowed = self.guard_port.check(tr.on, ctx)
+                if self.guard_port is not None:
+                    try:
+                        allowed = self.guard_port.check(tr.on, ctx)
+                    except Exception as exc:
+                        reasons.append(
+                            Reason(
+                                code="R_WF_GUARD_FAIL",
+                                summary=f"Guard failed for '{event}'",
+                            )
+                        )
+                        errors.append(
+                            Error(
+                                code="E_WF_GUARD_FAIL",
+                                message=(
+                                    f"GuardPort raised an exception for '{event}': {exc}"
+                                ),
+                                severity="error",
+                            )
+                        )
+                        continue
                 if allowed and self.expr_engine:
-                    try: allowed = bool(self.expr_engine.evaluate(tr.guard, ctx).value)
-                    except Exception: allowed = False
+                    try:
+                        allowed = bool(self.expr_engine.evaluate(tr.guard, ctx).value)
+                    except Exception as exc:
+                        errors.append(
+                            Error(
+                                code="E_WF_GUARD_FAIL",
+                                message=(
+                                    f"Guard evaluation failed for '{event}': {exc}"
+                                ),
+                                severity="error",
+                            )
+                        )
+                        allowed = False
             if not allowed:
-                reasons.append(Reason(code="R_WF_GUARD_FAIL", summary=f"Guard fail for {source}"))
+                errors.append(
+                    Error(
+                        code="E_WF_GUARD_FAIL",
+                        message=f"Guard failed for '{event}'",
+                        severity="error",
+                    )
+                )
+                reasons.append(
+                    Reason(
+                        code="R_WF_GUARD_FAIL",
+                        summary=f"Guard failed for '{event}'",
+                    )
+                )
                 continue
-            reasons.append(Reason(code="R_WF_GUARD_PASS", summary=f"Guard pass for {source}"))
+            reasons.append(
+                Reason(code="R_WF_GUARD_PASS", summary=f"Guard passed for '{event}'")
+            )
             final_executions.append((source, tr))
 
         if not final_executions:

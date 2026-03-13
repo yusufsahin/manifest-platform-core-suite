@@ -132,6 +132,71 @@ class TestToDict:
         assert d["durationMs"] == 2.5
 
 
+class TestObjectModel:
+    def test_minimal(self):
+        obj = Object(type="document", id="doc-1")
+        assert obj.type == "document"
+        assert obj.id == "doc-1"
+        assert obj.state is None
+        assert obj.attributes is None
+
+    def test_with_state_and_attributes(self):
+        obj = Object(type="document", id="doc-1", state="published", attributes={"owner": "u1"})
+        assert obj.state == "published"
+        assert obj.attributes["owner"] == "u1"
+
+    def test_immutable(self):
+        obj = Object(type="document", id="doc-1")
+        try:
+            obj.id = "doc-2"  # type: ignore[misc]
+            assert False, "Should be frozen"
+        except AttributeError:
+            pass
+
+
+class TestMessageModel:
+    def test_minimal(self):
+        msg = Message(level="info", text="All good")
+        assert msg.level == "info"
+        assert msg.text == "All good"
+        assert msg.i18n_key is None
+
+    def test_with_params(self):
+        msg = Message(level="warn", text="Quota at {pct}%", i18n_key="quota.warn", params={"pct": 90})
+        assert msg.i18n_key == "quota.warn"
+        assert msg.params["pct"] == 90
+
+
+class TestSourceSpan:
+    def test_span_fields(self):
+        span = SourceSpan(line2=5, col2=12)
+        assert span.line2 == 5
+        assert span.col2 == 12
+
+    def test_span_in_source_map(self):
+        err = Error(
+            code="E_PARSE_SYNTAX",
+            message="unexpected token",
+            severity="error",
+            source=SourceMap(file="test.mpc", line=3, col=1, span=SourceSpan(line2=3, col2=10)),
+        )
+        assert err.source.span.line2 == 3
+        assert err.source.span.col2 == 10
+
+
+class TestErrorWithPath:
+    def test_error_path_field(self):
+        err = Error(code="E_VALID_DUPLICATE_DEF", message="dup", severity="error", path="defs[1].id")
+        assert err.path == "defs[1].id"
+
+    def test_error_with_details(self):
+        err = Error(
+            code="E_VALID_DUPLICATE_DEF", message="dup", severity="error",
+            details={"id": "p1", "kind": "Policy"},
+        )
+        assert err.details["id"] == "p1"
+
+
 class TestFromDict:
     def test_actor(self):
         actor = from_dict(Actor, {"id": "u1", "type": "user", "roles": ["admin"]})

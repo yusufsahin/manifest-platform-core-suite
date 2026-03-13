@@ -1,0 +1,7 @@
+{
+  "namespace": "acme",
+  "defs": [
+    { "kind": "Policy", "id": "DefA", "extends": "DefB", "effect": "allow" },
+    { "kind": "Policy", "id": "DefB", "extends": "DefA", "effect": "deny" }
+  ]
+}

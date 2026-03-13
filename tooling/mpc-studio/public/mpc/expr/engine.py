@@ -201,6 +201,11 @@ _BUILTINS: dict[str, Any] = {}
 
 
 def _register_builtin(name: str):
+    """Decorator that registers a Python function as a named built-in for the expression engine.
+
+    Usage: @_register_builtin("myFn") registers the decorated function
+    so it can be called as ExprCall(fn="myFn", ...) in evaluated expressions.
+    """
     def _decorator(fn):
         _BUILTINS[name] = fn
         return fn
@@ -306,7 +311,10 @@ def _fn_now(args: list[Any], ctx: dict[str, Any]) -> str:
 
 @_register_builtin("regex")
 def _fn_regex(args: list[Any], ctx: dict[str, Any]) -> bool:
-    """Regex match — counts against the regex budget."""
+    """Regex match — counts against the regex budget.
+
+    Raises MPCError(E_EXPR_INVALID_REGEX) if the pattern is not a valid regex.
+    """
     if len(args) < 2:
         return False
     text = str(args[0])
@@ -316,8 +324,11 @@ def _fn_regex(args: list[Any], ctx: dict[str, Any]) -> bool:
         budget.count_regex()
     try:
         return bool(re.search(pattern, text))
-    except re.error:
-        return False
+    except re.error as exc:
+        raise MPCError(
+            "E_EXPR_INVALID_REGEX",
+            f"Invalid regex pattern '{pattern}': {exc}",
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +356,11 @@ def _eval_dispatch(
     meta: DomainMeta,
     budget: _Budget,
 ) -> Any:
+    """Type-dispatch inner evaluator. Called by _eval_node after budget accounting.
+
+    Handles each IR node type: ExprLit, ExprRef, ExprCall, ExprBinOp,
+    ExprUnary, ExprCond. Unknown node types return None.
+    """
     if isinstance(node, ExprLit):
         return node.value
 
@@ -374,7 +390,9 @@ def _eval_dispatch(
 
     if isinstance(node, ExprCond):
         test_val = _eval_node(node.test, ctx, meta, budget)
-        if test_val:
+        # Explicit falsy semantics: False, None, 0, 0.0, "", [], {} all take the
+        # else branch. This matches standard declarative expression language conventions.
+        if bool(test_val):
             return _eval_node(node.then_, ctx, meta, budget)
         return _eval_node(node.else_, ctx, meta, budget)
 
@@ -387,6 +405,13 @@ def _eval_binop(
     meta: DomainMeta,
     budget: _Budget,
 ) -> Any:
+    """Evaluate a binary operation node.
+
+    Arithmetic (+, -, *, /, %): raises E_EXPR_DIV_BY_ZERO if divisor is zero.
+    Comparison (==, !=, <, >, <=, >=): returns bool.
+    Logical (and, or): returns bool.
+    Regex (matches): raises E_EXPR_INVALID_REGEX if pattern is invalid.
+    """
     left = _eval_node(node.left, ctx, meta, budget)
     right = _eval_node(node.right, ctx, meta, budget)
     op = node.op
@@ -402,12 +427,12 @@ def _eval_binop(
     if op == "/":
         r = right or 0
         if r == 0:
-            return None
+            raise MPCError("E_EXPR_DIV_BY_ZERO", "Division by zero")
         return left / r
     if op == "%":
         r = right or 0
         if r == 0:
-            return None
+            raise MPCError("E_EXPR_DIV_BY_ZERO", "Modulo by zero")
         return (left or 0) % r
 
     if op == "==":
@@ -430,10 +455,14 @@ def _eval_binop(
 
     if op == "matches":
         budget.count_regex()
+        pattern = str(right)
         try:
-            return bool(re.search(str(right), str(left)))
-        except re.error:
-            return False
+            return bool(re.search(pattern, str(left)))
+        except re.error as exc:
+            raise MPCError(
+                "E_EXPR_INVALID_REGEX",
+                f"Invalid regex pattern '{pattern}': {exc}",
+            ) from exc
 
     return None
 

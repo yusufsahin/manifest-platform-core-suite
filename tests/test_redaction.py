@@ -108,3 +108,35 @@ class TestRedactionEngine:
         assert result["apiKey"] == "***"
         assert result["api_key"] == "***"
         assert result["authorization"] == "***"
+
+    def test_list_inside_list(self):
+        engine = RedactionEngine()
+        data = {"rows": [[{"name": "Alice", "secret": "x"}, {"name": "Bob", "secret": "y"}]]}
+        result = engine.redact(data)
+        assert result["rows"][0][0]["secret"] == "***"
+        assert result["rows"][0][1]["secret"] == "***"
+        assert result["rows"][0][0]["name"] == "Alice"
+
+    def test_path_based_pattern(self):
+        config = RedactionConfig(
+            deny_keys=frozenset(),
+            deny_patterns=["user.password"],
+        )
+        engine = RedactionEngine(config=config)
+        data = {"user": {"password": "hunter2", "name": "Alice"}, "password": "toplevel"}
+        result = engine.redact(data)
+        assert result["user"]["password"] == "***"
+        assert result["user"]["name"] == "Alice"
+
+    def test_redact_returns_scalar_unchanged(self):
+        engine = RedactionEngine()
+        assert engine.redact(42) == 42
+        assert engine.redact(True) is True
+        assert engine.redact(None) is None
+
+    def test_credit_card_redacted(self):
+        engine = RedactionEngine()
+        data = {"creditCard": "4111-1111-1111-1111", "credit_card": "5555-5555-5555-4444"}
+        result = engine.redact(data)
+        assert result["creditCard"] == "***"
+        assert result["credit_card"] == "***"

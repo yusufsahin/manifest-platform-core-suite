@@ -30,6 +30,7 @@
     },
     "timestamp": {
       "type": "string",
+      "format": "date-time",
       "minLength": 1
     },
     "actor": {

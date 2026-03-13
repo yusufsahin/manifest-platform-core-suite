@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_GOV_ATTESTATION_MISSING",
+    "message": "Artifact has no attestations; attestation is required",
+    "severity": "error"
+  }
+}

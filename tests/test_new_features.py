@@ -166,3 +166,51 @@ class TestRunCategory:
         runner = ConformanceRunner(fixtures)
         results = runner.run_category("nonexistent")
         assert results == []
+
+
+class TestConformanceCLI:
+    def test_no_command_returns_1(self):
+        from mpc.conformance.__main__ import main
+        assert main([]) == 1
+
+    def test_run_all_pass_returns_0(self, tmp_path):
+        import json
+        from mpc.conformance.__main__ import main
+        fixtures = tmp_path / "fixtures"
+        fx = fixtures / "compose" / "01_all_allow"
+        fx.mkdir(parents=True)
+        (fx / "meta.json").write_text(json.dumps({"preset": "preset-generic-full"}))
+        (fx / "input.json").write_text(json.dumps({
+            "decisions": [{"allow": True, "reasons": [{"code": "R_POLICY_ALLOW"}]}],
+            "strategy": "deny-wins",
+        }))
+        (fx / "expected.json").write_text(json.dumps({
+            "allow": True,
+            "reasons": [{"code": "R_POLICY_ALLOW"}],
+        }))
+        presets = tmp_path / "presets"
+        presets.mkdir()
+        (presets / "preset-generic-full.json").write_text(json.dumps({"defaultLimits": {}}))
+        rc = main(["run", str(fixtures), "--presets", str(presets)])
+        assert rc == 0
+
+    def test_run_category_returns_0(self, tmp_path):
+        import json
+        from mpc.conformance.__main__ import main
+        fixtures = tmp_path / "fixtures"
+        fx = fixtures / "compose" / "01_all_allow"
+        fx.mkdir(parents=True)
+        (fx / "meta.json").write_text(json.dumps({"preset": "preset-generic-full"}))
+        (fx / "input.json").write_text(json.dumps({
+            "decisions": [{"allow": True, "reasons": [{"code": "R_POLICY_ALLOW"}]}],
+            "strategy": "deny-wins",
+        }))
+        (fx / "expected.json").write_text(json.dumps({
+            "allow": True,
+            "reasons": [{"code": "R_POLICY_ALLOW"}],
+        }))
+        presets = tmp_path / "presets"
+        presets.mkdir()
+        (presets / "preset-generic-full.json").write_text(json.dumps({"defaultLimits": {}}))
+        rc = main(["run", str(fixtures), "--presets", str(presets), "--category", "compose"])
+        assert rc == 0

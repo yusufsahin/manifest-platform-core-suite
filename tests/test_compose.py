@@ -133,3 +133,37 @@ class TestAllowWins:
         ]
         result = compose_decisions(decisions, strategy="allow-wins")
         assert result.allow is True
+
+    def test_allow_wins_collects_all_reasons(self):
+        decisions = [
+            Decision(allow=True, reasons=[Reason(code="R_POLICY_ALLOW")]),
+            Decision(allow=False, reasons=[Reason(code="R_ACL_DENY_ROLE")]),
+        ]
+        result = compose_decisions(decisions, strategy="allow-wins")
+        codes = [r.code for r in result.reasons]
+        assert "R_POLICY_ALLOW" in codes
+        assert "R_ACL_DENY_ROLE" in codes
+
+    def test_allow_wins_all_deny(self):
+        decisions = [
+            Decision(allow=False, reasons=[Reason(code="R_POLICY_DENY")]),
+            Decision(allow=False, reasons=[Reason(code="R_ACL_DENY_ROLE")]),
+        ]
+        result = compose_decisions(decisions, strategy="allow-wins")
+        assert result.allow is False
+
+    def test_allow_wins_intents_deduped(self):
+        decisions = [
+            Decision(allow=True, intents=[Intent(kind="audit", target="log")]),
+            Decision(allow=False, intents=[Intent(kind="audit", target="log")]),
+        ]
+        result = compose_decisions(decisions, strategy="allow-wins")
+        assert len(result.intents) == 1
+
+    def test_unknown_strategy_falls_back_to_deny_wins(self):
+        decisions = [
+            Decision(allow=True, reasons=[Reason(code="R_POLICY_ALLOW")]),
+            Decision(allow=False, reasons=[Reason(code="R_ACL_DENY_ROLE")]),
+        ]
+        result = compose_decisions(decisions, strategy="unknown-strategy")
+        assert result.allow is False

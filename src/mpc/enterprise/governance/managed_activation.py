@@ -23,9 +23,9 @@ class ManagedActivation:
         # Simple simulation: trigger 'DEPLOY' if in 'Staging'
         # or 'PROMOTE' if in 'Draft'
         if "Draft" in self.engine.active_states:
-             return self.engine.fire("PROMOTE", {"actor_roles": self.approvals})
+             return self.engine.fire("PROMOTE", actor_roles=self.approvals)
         elif "Staging" in self.engine.active_states:
-             return self.engine.fire("DEPLOY", {"actor_roles": self.approvals})
+             return self.engine.fire("DEPLOY", actor_roles=self.approvals)
         
         return FireResult(
             new_state=self.engine.current_state,

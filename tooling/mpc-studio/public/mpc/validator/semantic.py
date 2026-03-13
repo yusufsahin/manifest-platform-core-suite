@@ -212,10 +212,7 @@ def _check_extends_cycles(
                         ),
                         severity="error",
                         path=f"defs/{start_key[1]}",
-                        source=node_map.get(start_key, node_map.get(start_key))
-                        and node_map[start_key].source
-                        if start_key in node_map
-                        else None,
+                        source=node_map[start_key].source if start_key in node_map else None,
                     )
                 )
                 reported |= visited
@@ -255,8 +252,11 @@ def _check_import_cycles(
                         message=f"Cycle detected in import chain involving '{dep}'",
                         severity="error",
                         path=f"defs/{dep}",
-                        source=node_map.get(("", dep), node_map.get((ast.namespace, dep)))
-                        and None,
+                        source=(
+                            node_map.get(("", dep)) or node_map.get((ast.namespace, dep))
+                        ).source if (
+                            node_map.get(("", dep)) or node_map.get((ast.namespace, dep))
+                        ) else None,
                     )
                 )
                 reported.add(dep)

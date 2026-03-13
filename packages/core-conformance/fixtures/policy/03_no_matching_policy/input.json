@@ -1,0 +1,18 @@
+{
+  "event": {
+    "actor": { "id": "u1", "roles": ["viewer"], "type": "user" },
+    "kind": "create",
+    "name": "doc.create",
+    "object": { "id": "d1", "type": "document" },
+    "timestamp": "2026-02-22T00:00:00+03:00"
+  },
+  "policies": [
+    {
+      "id": "p1",
+      "effect": "deny",
+      "match": { "kind": "delete" },
+      "priority": 10
+    }
+  ],
+  "strategy": "deny-wins"
+}

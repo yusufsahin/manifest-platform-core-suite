@@ -81,6 +81,40 @@ class TestCompileRegistry:
         r_b = compile_registry(ast, meta_b)
         assert r_a.meta_hash != r_b.meta_hash
 
+    def test_imports_list_adds_to_dep_graph(self):
+        ast = ManifestAST(
+            schema_version=1, namespace="ns", name="n", manifest_version="1.0.0",
+            defs=[
+                ASTNode(kind="Policy", id="p1", properties={"effect": "allow"}),
+                ASTNode(kind="Policy", id="p2", properties={"imports": ["p1", "p3"]}),
+            ],
+        )
+        reg = compile_registry(ast, _simple_meta())
+        assert "p1" in reg.dependency_graph["p2"]
+        assert "p3" in reg.dependency_graph["p2"]
+
+    def test_children_affect_ast_hash(self):
+        ast_no_child = ManifestAST(
+            schema_version=1, namespace="ns", name="n", manifest_version="1.0.0",
+            defs=[ASTNode(kind="Policy", id="p1", properties={"effect": "allow"})],
+        )
+        ast_with_child = ManifestAST(
+            schema_version=1, namespace="ns", name="n", manifest_version="1.0.0",
+            defs=[ASTNode(
+                kind="Policy", id="p1", properties={"effect": "allow"},
+                children=[ASTNode(kind="Condition", id="c1", properties={"type": "role"})],
+            )],
+        )
+        r1 = compile_registry(ast_no_child, _simple_meta())
+        r2 = compile_registry(ast_with_child, _simple_meta())
+        assert r1.ast_hash != r2.ast_hash
+
+    def test_empty_ast_empty_dep_graph(self):
+        ast = ManifestAST(schema_version=1, namespace="ns", name="n", manifest_version="1.0.0", defs=[])
+        reg = compile_registry(ast, _simple_meta())
+        assert reg.defs_by_id == {}
+        assert reg.dependency_graph == {}
+
     def test_def_order_does_not_affect_ast_hash(self):
         """IMP-3 regression: different def ordering must produce same ast_hash."""
         ast_1 = ManifestAST(

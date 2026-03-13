@@ -1,0 +1,9 @@
+{
+  "states": ["draft", "cancelled"],
+  "transitions": [
+    { "from": "draft", "on": "cancel", "to": "cancelled", "auth_roles": ["admin"] }
+  ],
+  "current": "draft",
+  "event": "cancel",
+  "actor_roles": ["viewer"]
+}

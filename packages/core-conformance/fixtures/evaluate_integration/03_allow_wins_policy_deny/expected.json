@@ -1,0 +1,7 @@
+{
+  "allow": true,
+  "reasons": [
+    { "code": "R_POLICY_DENY" },
+    { "code": "R_ACL_ALLOW_ROLE" }
+  ]
+}

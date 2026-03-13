@@ -34,6 +34,8 @@ All produced errors MUST use codes in this registry. Unknown codes MUST fail con
 - E_WF_NO_INITIAL
 - E_WF_UNKNOWN_STATE
 - E_WF_UNKNOWN_TRANSITION
+- E_WF_GUARD_FAIL
+- E_WF_AUTH_DENIED
 
 ## Policy
 - E_POLICY_INVALID_MATCHER

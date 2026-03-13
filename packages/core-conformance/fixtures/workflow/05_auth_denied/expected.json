@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_WF_AUTH_DENIED",
+    "message": "Actor lacks required roles for 'cancel'",
+    "severity": "error"
+  }
+}

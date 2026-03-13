@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "code": "E_VALID_NAMESPACE_CONFLICT",
+      "message": "Namespace conflict: id 'shared-id' used by multiple kinds (ACL, Policy) in namespace 'acme'",
+      "severity": "error"
+    }
+  ]
+}

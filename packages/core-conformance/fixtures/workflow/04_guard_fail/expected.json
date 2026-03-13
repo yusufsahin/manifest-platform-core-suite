@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_WF_GUARD_FAIL",
+    "message": "Guard failed for 'publish'",
+    "severity": "error"
+  }
+}

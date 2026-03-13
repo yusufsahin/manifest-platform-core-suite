@@ -41,21 +41,39 @@ class ExprBinOp:
     """Binary operator: arithmetic (+, -, *, /, %), comparison (==, !=, <, >, <=, >=),
     logical (and, or), string (matches)."""
     op: str
-    left: ExprNode = field(default=None)  # type: ignore[assignment]
-    right: ExprNode = field(default=None)  # type: ignore[assignment]
+    left: "ExprNode | None" = None
+    right: "ExprNode | None" = None
+
+    def __post_init__(self) -> None:
+        if self.left is None or self.right is None:
+            raise ValueError(
+                f"ExprBinOp(op='{self.op}') requires both 'left' and 'right' operands"
+            )
 
 @dataclass(frozen=True)
 class ExprUnary:
     """Unary operator: 'not' (logical negation), 'neg' (arithmetic negation)."""
     op: str
-    operand: ExprNode = field(default=None)  # type: ignore[assignment]
+    operand: "ExprNode | None" = None
+
+    def __post_init__(self) -> None:
+        if self.operand is None:
+            raise ValueError(
+                f"ExprUnary(op='{self.op}') requires an 'operand'"
+            )
 
 @dataclass(frozen=True)
 class ExprCond:
     """Conditional: if test then then_ else else_."""
-    test: ExprNode = field(default=None)  # type: ignore[assignment]
-    then_: ExprNode = field(default=None)  # type: ignore[assignment]
-    else_: ExprNode = field(default=None)  # type: ignore[assignment]
+    test: "ExprNode | None" = None
+    then_: "ExprNode | None" = None
+    else_: "ExprNode | None" = None
+
+    def __post_init__(self) -> None:
+        if self.test is None or self.then_ is None or self.else_ is None:
+            raise ValueError(
+                "ExprCond requires 'test', 'then_', and 'else_' operands"
+            )
 
 
 ExprNode = ExprLit | ExprRef | ExprCall | ExprBinOp | ExprUnary | ExprCond

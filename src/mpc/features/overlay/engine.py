@@ -17,6 +17,7 @@ from mpc.kernel.contracts.models import Error
 @dataclass(frozen=True)
 class Selector:
     """Stable selector: (kind, namespace, id). Any field can be None for wildcard."""
+
     kind: str | None = None
     namespace: str | None = None
     id: str | None = None
@@ -65,91 +66,119 @@ class OverlayEngine:
 
     def apply(self, overlay_ast: ManifestAST) -> OverlayResult:
         """Apply *overlay_ast* definitions on top of the base AST."""
-        base_by_key: dict[str, ASTNode] = {
-            _node_key(d): d for d in self.base.defs
-        }
+        base_by_key: dict[str, ASTNode] = {_node_key(node): node for node in self.base.defs}
         applied: list[str] = []
         conflicts: list[Error] = []
         path_ops: dict[str, list[str]] = {}
 
-        overlay_defs = [d for d in overlay_ast.defs if d.kind == "Overlay"]
+        overlay_defs = [node for node in overlay_ast.defs if node.kind == "Overlay"]
 
-        for odef in overlay_defs:
-            selector = parse_selector(odef.properties)
-            op = odef.properties.get("op", "merge")
-            path = odef.properties.get("path")
+        for overlay_def in overlay_defs:
+            selector = parse_selector(overlay_def.properties)
+            op = overlay_def.properties.get("op", "merge")
+            path = overlay_def.properties.get("path")
 
             if selector is None:
-                conflicts.append(Error(
-                    code="E_OVERLAY_UNKNOWN_SELECTOR",
-                    message=f"Overlay '{odef.id}' has no target selector",
-                    severity="error",
-                    source=odef.source,
-                ))
+                conflicts.append(
+                    Error(
+                        code="E_OVERLAY_UNKNOWN_SELECTOR",
+                        message=f"Overlay '{overlay_def.id}' has no target selector",
+                        severity="error",
+                        source=overlay_def.source,
+                    )
+                )
                 continue
 
             matched_keys = self._find_matches(selector, base_by_key)
 
             if op == "remove":
-                for key in matched_keys:
-                    node = base_by_key.pop(key)
-                    applied.append(f"remove:{node.id}")
+                if path:
+                    parts = path.split(".")
+                    for key in matched_keys:
+                        existing = base_by_key[key]
+                        new_props = dict(existing.properties)
+                        _del_nested(new_props, parts)
+                        base_by_key[key] = ASTNode(
+                            kind=existing.kind,
+                            id=existing.id,
+                            name=existing.name,
+                            properties=new_props,
+                            children=existing.children,
+                            source=existing.source,
+                        )
+                        applied.append(f"remove-path:{existing.id}:{path}")
+                else:
+                    for key in matched_keys:
+                        node = base_by_key.pop(key)
+                        applied.append(f"remove:{node.id}")
                 continue
 
             if not matched_keys and op not in ("replace", "append"):
-                conflicts.append(Error(
-                    code="E_OVERLAY_UNKNOWN_SELECTOR",
-                    message=f"No target found for selector {_sel_str(selector)}",
-                    severity="error",
-                    source=odef.source,
-                ))
+                conflicts.append(
+                    Error(
+                        code="E_OVERLAY_UNKNOWN_SELECTOR",
+                        message=f"No target found for selector {_sel_str(selector)}",
+                        severity="error",
+                        source=overlay_def.source,
+                    )
+                )
                 continue
 
             if path and op == "replace":
                 for key in matched_keys:
                     conflict_key = f"{key}:{path}"
-                    path_ops.setdefault(conflict_key, []).append(odef.id)
+                    path_ops.setdefault(conflict_key, []).append(overlay_def.id)
                     if len(path_ops[conflict_key]) > 1:
-                        conflicts.append(Error(
-                            code="E_OVERLAY_CONFLICT",
-                            message=(
-                                f"Conflicting overlays on path '{path}': "
-                                f"two replace ops produce different values"
-                            ),
-                            severity="error",
-                            source=odef.source,
-                        ))
+                        conflicts.append(
+                            Error(
+                                code="E_OVERLAY_CONFLICT",
+                                message=(
+                                    f"Conflicting overlays on path '{path}': "
+                                    "two replace ops produce different values"
+                                ),
+                                severity="error",
+                                source=overlay_def.source,
+                            )
+                        )
                         continue
 
-            values = odef.properties.get("values", odef.properties.get("value"))
+            values = overlay_def.properties.get(
+                "values", overlay_def.properties.get("value")
+            )
             if values is None:
                 values = {}
             if not isinstance(values, dict):
-                if path:
-                    values = {path: values}
-                else:
-                    values = {}
+                values = {path: values} if path else {}
 
             if op == "replace":
                 for key in matched_keys:
                     existing = base_by_key[key]
                     if path:
-                        _apply_path_op(base_by_key, key, existing, path, values, op, applied)
+                        _apply_path_op(
+                            base_by_key,
+                            key,
+                            existing,
+                            path,
+                            values,
+                            op,
+                            applied,
+                        )
                     else:
-                        new_node = ASTNode(
+                        base_by_key[key] = ASTNode(
                             kind=existing.kind,
                             id=existing.id,
                             properties=values,
-                            source=odef.source,
+                            source=overlay_def.source,
                         )
-                        base_by_key[key] = new_node
                         applied.append(f"replace:{existing.id}")
 
                 if not matched_keys and selector and selector.id:
-                    kind = odef.properties.get("kind", selector.kind or "Unknown")
+                    kind = overlay_def.properties.get("kind", selector.kind or "Unknown")
                     new_node = ASTNode(
-                        kind=kind, id=selector.id,
-                        properties=values, source=odef.source,
+                        kind=kind,
+                        id=selector.id,
+                        properties=values,
+                        source=overlay_def.source,
                     )
                     base_by_key[_node_key(new_node)] = new_node
                     applied.append(f"replace:{selector.id}")
@@ -158,39 +187,65 @@ class OverlayEngine:
                 for key in matched_keys:
                     existing = base_by_key[key]
                     if path:
-                        _apply_path_op(base_by_key, key, existing, path, values, op, applied)
+                        _apply_path_op(
+                            base_by_key,
+                            key,
+                            existing,
+                            path,
+                            values,
+                            op,
+                            applied,
+                        )
                     else:
                         merged = _deep_merge(existing.properties, values)
                         base_by_key[key] = ASTNode(
-                            kind=existing.kind, id=existing.id,
-                            name=existing.name, properties=merged,
-                            children=existing.children, source=existing.source,
+                            kind=existing.kind,
+                            id=existing.id,
+                            name=existing.name,
+                            properties=merged,
+                            children=existing.children,
+                            source=existing.source,
                         )
                         applied.append(f"merge:{existing.id}")
 
             elif op == "append":
                 for key in matched_keys:
                     existing = base_by_key[key]
-                    new_props = dict(existing.properties)
-                    for k, v in values.items():
-                        existing_val = new_props.get(k)
-                        if isinstance(existing_val, list) and isinstance(v, list):
-                            new_props[k] = existing_val + v
-                        else:
-                            new_props[k] = v
-                    base_by_key[key] = ASTNode(
-                        kind=existing.kind, id=existing.id,
-                        name=existing.name, properties=new_props,
-                        children=existing.children, source=existing.source,
-                    )
-                    applied.append(f"append:{existing.id}")
+                    if path:
+                        _apply_path_op(
+                            base_by_key,
+                            key,
+                            existing,
+                            path,
+                            values,
+                            op,
+                            applied,
+                        )
+                    else:
+                        new_props = dict(existing.properties)
+                        for prop_key, value in values.items():
+                            existing_value = new_props.get(prop_key)
+                            if isinstance(existing_value, list) and isinstance(value, list):
+                                new_props[prop_key] = existing_value + value
+                            else:
+                                new_props[prop_key] = value
+                        base_by_key[key] = ASTNode(
+                            kind=existing.kind,
+                            id=existing.id,
+                            name=existing.name,
+                            properties=new_props,
+                            children=existing.children,
+                            source=existing.source,
+                        )
+                        applied.append(f"append:{existing.id}")
 
                 if not matched_keys and selector and selector.id:
-                    kind = odef.properties.get("kind", selector.kind or "Unknown")
+                    kind = overlay_def.properties.get("kind", selector.kind or "Unknown")
                     new_node = ASTNode(
-                        kind=kind, id=selector.id,
+                        kind=kind,
+                        id=selector.id,
                         properties=values if isinstance(values, dict) else {},
-                        source=odef.source,
+                        source=overlay_def.source,
                     )
                     base_by_key[_node_key(new_node)] = new_node
                     applied.append(f"append:{selector.id}")
@@ -200,19 +255,24 @@ class OverlayEngine:
                     existing = base_by_key[key]
                     merged = {**existing.properties, **values}
                     base_by_key[key] = ASTNode(
-                        kind=existing.kind, id=existing.id,
-                        name=existing.name, properties=merged,
-                        children=existing.children, source=existing.source,
+                        kind=existing.kind,
+                        id=existing.id,
+                        name=existing.name,
+                        properties=merged,
+                        children=existing.children,
+                        source=existing.source,
                     )
                     applied.append(f"patch:{existing.id}")
 
             else:
-                conflicts.append(Error(
-                    code="E_OVERLAY_INVALID_OP",
-                    message=f"Unknown overlay op '{op}' on '{odef.id}'",
-                    severity="error",
-                    source=odef.source,
-                ))
+                conflicts.append(
+                    Error(
+                        code="E_OVERLAY_INVALID_OP",
+                        message=f"Unknown overlay op '{op}' on '{overlay_def.id}'",
+                        severity="error",
+                        source=overlay_def.source,
+                    )
+                )
 
         result_ast = ManifestAST(
             schema_version=self.base.schema_version,
@@ -227,7 +287,8 @@ class OverlayEngine:
         self, selector: Selector, base_by_key: dict[str, ASTNode]
     ) -> list[str]:
         return [
-            key for key, node in base_by_key.items()
+            key
+            for key, node in base_by_key.items()
             if selector.matches(node, self.base.namespace)
         ]
 
@@ -246,46 +307,66 @@ def _apply_path_op(
     parts = path.split(".")
 
     if op == "replace":
-        val = values.get(path, next(iter(values.values())) if values else None)
-        _set_nested(new_props, parts, val)
+        value = values.get(path, next(iter(values.values())) if values else None)
+        _set_nested(new_props, parts, value)
     elif op == "merge":
         current = _get_nested(new_props, parts)
         if isinstance(current, dict) and isinstance(values, dict):
             _set_nested(new_props, parts, {**current, **values})
         else:
             _set_nested(new_props, parts, values)
+    elif op == "append":
+        value = values.get(path, next(iter(values.values())) if values else None)
+        current = _get_nested(new_props, parts)
+        if isinstance(current, list) and isinstance(value, list):
+            _set_nested(new_props, parts, current + value)
+        else:
+            _set_nested(new_props, parts, value)
 
     base_by_key[key] = ASTNode(
-        kind=existing.kind, id=existing.id,
-        name=existing.name, properties=new_props,
-        children=existing.children, source=existing.source,
+        kind=existing.kind,
+        id=existing.id,
+        name=existing.name,
+        properties=new_props,
+        children=existing.children,
+        source=existing.source,
     )
     applied.append(f"{op}:{existing.id}:{path}")
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     result = dict(base)
-    for k, v in overlay.items():
-        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
-            result[k] = _deep_merge(result[k], v)
+    for key, value in overlay.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
         else:
-            result[k] = v
+            result[key] = value
     return result
 
 
 def _get_nested(obj: dict[str, Any], parts: list[str]) -> Any:
     current: Any = obj
-    for p in parts:
+    for part in parts:
         if isinstance(current, dict):
-            current = current.get(p)
+            current = current.get(part)
         else:
             return None
     return current
 
 
+def _del_nested(obj: dict[str, Any], parts: list[str]) -> None:
+    """Delete the key at the end of *parts* from a nested dict. No-op if missing."""
+    for part in parts[:-1]:
+        if not isinstance(obj, dict) or part not in obj:
+            return
+        obj = obj[part]
+    if isinstance(obj, dict):
+        obj.pop(parts[-1], None)
+
+
 def _set_nested(obj: dict[str, Any], parts: list[str], value: Any) -> None:
-    for p in parts[:-1]:
-        obj = obj.setdefault(p, {})
+    for part in parts[:-1]:
+        obj = obj.setdefault(part, {})
     obj[parts[-1]] = value
 
 

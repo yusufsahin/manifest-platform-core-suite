@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "code": "E_VALID_CYCLE_DETECTED",
+      "message": "Cycle detected in extends chain starting at 'DefA'",
+      "severity": "error"
+    }
+  ]
+}

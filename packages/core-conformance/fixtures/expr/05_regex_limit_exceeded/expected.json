@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E_EXPR_REGEX_LIMIT",
+    "message": "Regex operation limit exceeded (limit: 0)",
+    "severity": "error"
+  }
+}

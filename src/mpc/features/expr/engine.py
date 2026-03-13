@@ -324,8 +324,11 @@ def _fn_regex(args: list[Any], ctx: dict[str, Any]) -> bool:
     # Here we simulate with a budget check and relying on the overall engine timeout.
     try:
         return bool(re.search(pattern, text))
-    except re.error:
-        return False
+    except re.error as exc:
+        raise MPCError(
+            "E_EXPR_INVALID_REGEX",
+            f"Invalid regex pattern '{pattern}': {exc}",
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -435,12 +438,12 @@ def _eval_binop(
     if op == "/":
         r = _to_number(right)
         if r == 0:
-            return None
+            raise MPCError("E_EXPR_DIV_BY_ZERO", "Division by zero")
         return _to_number(left) / r
     if op == "%":
         r = _to_number(right)
         if r == 0:
-            return None
+            raise MPCError("E_EXPR_DIV_BY_ZERO", "Modulo by zero")
         return _to_number(left) % r
 
     if op == "==":
@@ -463,10 +466,15 @@ def _eval_binop(
 
     if op == "matches":
         budget.count_regex()
+        budget._check_time()
+        pattern = str(right)
         try:
-            return bool(re.search(str(right), str(left)))
-        except re.error:
-            return False
+            return bool(re.search(pattern, str(left)))
+        except re.error as exc:
+            raise MPCError(
+                "E_EXPR_INVALID_REGEX",
+                f"Invalid regex pattern '{pattern}': {exc}",
+            ) from exc
 
     return None
 
@@ -560,9 +568,11 @@ class ExprEngine:
     meta: DomainMeta
     max_depth: int = 50
     max_steps: int = 5000
+    max_time_ms: float = 50.0
+    max_regex_ops: int = 5000
     max_total_defs: int = 5000
     clock: datetime | str | None = None
-    use_vm: bool = True
+    use_vm: bool = False
     log_callback: Any | None = None
     _bytecode_cache: dict[str, Any] = field(default_factory=dict, init=False)
 
@@ -592,6 +602,7 @@ class ExprEngine:
         if self.clock is not None:
             ctx.setdefault("__clock__", self.clock)
         ctx["__budget__"] = budget
+        trace: list[dict[str, Any]] | None = None
 
         if self.use_vm and not enable_trace:
             # Simple string-key cache
@@ -606,7 +617,7 @@ class ExprEngine:
             vm = BytecodeVM(builtins=_BUILTINS, budget=budget)
             result_val = vm.execute(instructions, ctx, self.meta)
         else:
-            trace: list[dict[str, Any]] | None = [] if enable_trace else None
+            trace = [] if enable_trace else None
             if trace is not None:
                 ctx["__trace__"] = trace
             result_val = _eval_node(node, ctx, self.meta, budget)

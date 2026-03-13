@@ -1,0 +1,5 @@
+{
+  "clock": "2026-02-22T00:00:00+03:00",
+  "preset": "preset-generic-full",
+  "notes": "Duplicate (kind, id) pair must be rejected with E_VALID_DUPLICATE_DEF"
+}

@@ -30,6 +30,9 @@ class SigningPort(Protocol):
         """Return the algorithm identifier (e.g. 'ed25519', 'rsa-sha256')."""
         ...
 
+@runtime_checkable
+class VerificationPort(Protocol):
+    """Interface for verifying signatures."""
 
     def verify(self, data: bytes, signature: str) -> bool:
         """Return True if *signature* is valid for *data*."""

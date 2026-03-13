@@ -1,0 +1,15 @@
+{
+  "event": {
+    "actor": { "id": "u1", "roles": ["admin"], "type": "user" },
+    "kind": "delete",
+    "name": "entity.delete",
+    "object": { "id": "e1", "type": "entity" }
+  },
+  "policies": [
+    { "id": "p1", "effect": "allow", "match": { "kind": "delete" } }
+  ],
+  "rules": [
+    { "role": "admin", "actions": ["delete"] }
+  ],
+  "strategy": "deny-wins"
+}

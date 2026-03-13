@@ -1,0 +1,7 @@
+{
+  "namespace": "acme",
+  "defs": [
+    { "kind": "Policy", "id": "shared-id", "effect": "allow" },
+    { "kind": "ACL",    "id": "shared-id", "action": "read" }
+  ]
+}

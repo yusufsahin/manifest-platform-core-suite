@@ -152,12 +152,8 @@ class ActivationProtocol:
                         severity="error",
                     ))
             except Exception as exc:
-                self._active_artifact_hash = prev_hash
-                return self._rollback(completed, Error(
-                    code="E_GOV_AUDIT_FAILED",
-                    message=f"Audit error: {exc}",
-                    severity="error",
-                ))
+                # Audit logging is best-effort after the swap is already committed.
+                pass
         completed.append(ActivationStep.AUDIT.value)
 
         # Step 6: Cache invalidation (consuming app responsibility)

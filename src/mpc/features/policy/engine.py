@@ -94,7 +94,18 @@ def _matches_event(policy: ASTNode, event: dict[str, Any], expr_engine: ExprEngi
 
     # Priority 2: Static key-value matching
     for key, expected in match.items():
-        actual = event.get(key)
+        actual = _get_dotted(event, key)
         if actual != expected:
             return False
     return True
+
+
+def _get_dotted(data: dict[str, Any], key: str) -> Any:
+    """Resolve a dotted key path like 'object.type' from a nested dict."""
+    parts = key.split(".")
+    current: Any = data
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
