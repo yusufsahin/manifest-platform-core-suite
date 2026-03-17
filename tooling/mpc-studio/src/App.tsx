@@ -9,6 +9,9 @@ import DomainRegistry from './components/DomainRegistry';
 import PolicySimulator from './components/PolicySimulator';
 import UISchemaView from './components/UISchemaView';
 import { StatusBadge } from './components/StatusBadge';
+import ACLExplorer from './components/ACLExplorer';
+import GovernanceDashboard from './components/GovernanceDashboard';
+import RedactionPreview from './components/RedactionPreview';
 
 const VALIDATION_DEBOUNCE_MS = 350;
 
@@ -138,6 +141,10 @@ function App() {
     return await mpcEngine.evaluatePolicy(dsl, event);
   };
 
+  const handleRedact = async (data: any) => {
+    return await mpcEngine.redactData(dsl, data);
+  };
+
   const handleSave = async () => {
     if (!fileHandle) {
       // Fallback to download or save as if no handle
@@ -221,6 +228,12 @@ function App() {
                 />
               ) : sidebarTab === 'security' ? (
                 <PolicySimulator onSimulate={handleSimulatePolicy} />
+              ) : sidebarTab === 'redaction' ? (
+                <RedactionPreview dsl={dsl} onRedact={handleRedact} />
+              ) : sidebarTab === 'acl' ? (
+                <ACLExplorer dsl={dsl} definitions={result?.status === 'success' ? (result.ast?.defs || []) : []} />
+              ) : sidebarTab === 'governance' ? (
+                <GovernanceDashboard />
               ) : (
                 <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">
                   Feature '{sidebarTab}' coming soon

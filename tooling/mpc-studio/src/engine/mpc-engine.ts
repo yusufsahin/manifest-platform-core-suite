@@ -60,6 +60,20 @@ export class MPCEngine {
       payload: { dsl }
     });
   }
+
+  async redactData(dsl: string, data: any, context?: any): Promise<any> {
+    return this.postMessage<any>({
+      type: 'REDACT_DATA',
+      payload: { dsl, data, context }
+    });
+  }
+
+  async simulateACL(dsl: string, role: string, resource: string, action: string): Promise<any> {
+    return this.postMessage<any>({
+      type: 'SIMULATE_ACL',
+      payload: { dsl, role, resource, action }
+    });
+  }
 }
 
 export const mpcEngine = new MPCEngine();

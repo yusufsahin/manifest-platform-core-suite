@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "npm run sync-mpc && vite",
+    "build": "npm run sync-mpc && tsc -b && vite build",
+    "sync-mpc": "node scripts/sync-mpc.js",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "playwright test",

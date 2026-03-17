@@ -1,4 +1,4 @@
-import { Database, FileText, Layers, Shield, Workflow } from 'lucide-react';
+import { Activity, Database, EyeOff, FileText, Layers, Lock, Shield, Workflow } from 'lucide-react';
 
 interface ValidationSummary {
   status?: string;
@@ -24,6 +24,9 @@ const Sidebar = ({ result, files, activeFile, onFileSelect, activeTab, onTabChan
     { id: 'editor', icon: FileText, label: 'Manifest Editor' },
     { id: 'registry', icon: Database, label: 'Domain Registry' },
     { id: 'security', icon: Shield, label: 'Security Policies' },
+    { id: 'redaction', icon: EyeOff, label: 'Redaction Preview' },
+    { id: 'acl', icon: Lock, label: 'ACL Explorer' },
+    { id: 'governance', icon: Activity, label: 'Governance' },
     { id: 'workflow', icon: Workflow, label: 'Workflow Engine' },
     { id: 'overlays', icon: Layers, label: 'Overlay System' },
   ];
