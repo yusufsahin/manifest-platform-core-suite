@@ -30,11 +30,15 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_EXPR_LIMIT_STEPS",
     "E_EXPR_LIMIT_TIME",
     "E_EXPR_REGEX_LIMIT",
+    "E_EXPR_DIV_BY_ZERO",
+    "E_EXPR_INVALID_REGEX",
     "E_BUDGET_EXCEEDED",
     # Workflow
     "E_WF_NO_INITIAL",
     "E_WF_UNKNOWN_STATE",
     "E_WF_UNKNOWN_TRANSITION",
+    "E_WF_GUARD_FAIL",
+    "E_WF_AUTH_DENIED",
     # Policy
     "E_POLICY_INVALID_MATCHER",
     "E_POLICY_INVALID_TEMPLATE",

@@ -13,14 +13,21 @@ from typing import Any
 
 from mpc.kernel.ast.models import ASTNode, ManifestAST
 from mpc.kernel.contracts.models import Error, Intent, Reason
+from mpc.kernel.meta.models import DomainMeta
+from mpc.features.expr import ExprEngine
 
 
 @dataclass(frozen=True)
 class ACLResult:
-    allowed: bool
+    allow: bool
     reasons: list[Reason] = field(default_factory=list)
     intents: list[Intent] = field(default_factory=list)
     errors: list[Error] = field(default_factory=list)
+
+    @property
+    def allowed(self) -> bool:
+        """Backward-compatible alias for older callers."""
+        return self.allow
 
 
 @dataclass
@@ -28,6 +35,7 @@ class ACLEngine:
     """Evaluate ACL definitions for access control decisions."""
 
     ast: ManifestAST
+    meta: DomainMeta | None = None
     role_hierarchy: dict[str, set[str]] = field(default_factory=dict)
 
     def check(
@@ -40,10 +48,10 @@ class ACLEngine:
     ) -> ACLResult:
         """Check if *action* on *resource* is allowed for the given actor."""
         effective_roles = self._expand_roles(set(actor_roles or []))
+        expr_engine = ExprEngine(meta=self.meta) if self.meta else None
+
         acl_defs = [d for d in self.ast.defs if d.kind == "ACL"]
-        acl_defs.sort(
-            key=lambda d: (-d.properties.get("priority", 0), d.id)
-        )
+        acl_defs.sort(key=lambda d: (-d.properties.get("priority", 0), d.id))
 
         reasons: list[Reason] = []
         intents: list[Intent] = []
@@ -53,58 +61,87 @@ class ACLEngine:
             rule_action = rule.properties.get("action")
             rule_resource = rule.properties.get("resource")
 
-            if rule_action is not None and rule_action != action and rule_action != "*":
+            if rule_action is not None and rule_action not in (action, "*"):
                 continue
-            if rule_resource is not None and rule_resource != resource and rule_resource != "*":
+            if rule_resource is not None and rule_resource not in (resource, "*"):
                 continue
 
-            # RBAC path
             required_roles = rule.properties.get("roles", [])
             if isinstance(required_roles, list) and required_roles:
                 if effective_roles & set(required_roles):
                     effect = rule.properties.get("effect", "allow")
                     if effect == "deny":
-                        reasons.append(Reason(
-                            code="R_ACL_DENY_ROLE",
-                            summary=f"Denied by ACL rule '{rule.id}'",
-                        ))
-                        return ACLResult(allowed=False, reasons=reasons,
-                                         intents=intents, errors=errors)
-                    reasons.append(Reason(
-                        code="R_ACL_ALLOW_ROLE",
-                        summary=f"Allowed by ACL rule '{rule.id}'",
-                    ))
-                    mask_intents = _collect_mask_intents(rule)
-                    intents.extend(mask_intents)
-                    return ACLResult(allowed=True, reasons=reasons,
-                                     intents=intents, errors=errors)
+                        reasons.append(
+                            Reason(
+                                code="R_ACL_DENY_ROLE",
+                                summary=f"Denied by ACL rule '{rule.id}'",
+                            )
+                        )
+                        return ACLResult(
+                            allow=False,
+                            reasons=reasons,
+                            intents=intents,
+                            errors=errors,
+                        )
+                    reasons.append(
+                        Reason(
+                            code="R_ACL_ALLOW_ROLE",
+                            summary=f"Allowed by ACL rule '{rule.id}'",
+                        )
+                    )
+                    intents.extend(_collect_mask_intents(rule))
+                    return ACLResult(
+                        allow=True,
+                        reasons=reasons,
+                        intents=intents,
+                        errors=errors,
+                    )
 
-            # ABAC path
             condition = rule.properties.get("condition")
             if isinstance(condition, dict) and actor_attrs:
-                if _eval_abac_condition(condition, actor_attrs):
+                if _eval_abac_condition(condition, actor_attrs, expr_engine):
                     effect = rule.properties.get("effect", "allow")
                     if effect == "deny":
-                        reasons.append(Reason(
-                            code="R_ACL_DENY_ABAC",
-                            summary=f"Denied by ABAC rule '{rule.id}'",
-                        ))
-                        return ACLResult(allowed=False, reasons=reasons,
-                                         intents=intents, errors=errors)
-                    reasons.append(Reason(
-                        code="R_ACL_ALLOW_ABAC",
-                        summary=f"Allowed by ABAC rule '{rule.id}'",
-                    ))
-                    mask_intents = _collect_mask_intents(rule)
-                    intents.extend(mask_intents)
-                    return ACLResult(allowed=True, reasons=reasons,
-                                     intents=intents, errors=errors)
+                        reasons.append(
+                            Reason(
+                                code="R_ACL_DENY_ABAC",
+                                summary=f"Denied by ABAC rule '{rule.id}'",
+                            )
+                        )
+                        return ACLResult(
+                            allow=False,
+                            reasons=reasons,
+                            intents=intents,
+                            errors=errors,
+                        )
+                    reasons.append(
+                        Reason(
+                            code="R_ACL_ALLOW_ABAC",
+                            summary=f"Allowed by ABAC rule '{rule.id}'",
+                        )
+                    )
+                    intents.extend(_collect_mask_intents(rule))
+                    return ACLResult(
+                        allow=True,
+                        reasons=reasons,
+                        intents=intents,
+                        errors=errors,
+                    )
 
-        reasons.append(Reason(
-            code="R_ACL_DENY_ROLE",
-            summary=f"No matching ACL rule for action='{action}', resource='{resource}'",
-        ))
-        return ACLResult(allowed=False, reasons=reasons, intents=intents, errors=errors)
+        reasons.append(
+            Reason(
+                code="R_ACL_DENY_ROLE",
+                summary=(
+                    f"No matching ACL rule for action='{action}', resource='{resource}'"
+                ),
+            )
+        )
+        return ACLResult(
+            allow=False,
+            reasons=reasons,
+            intents=intents,
+            errors=errors,
+        )
 
     def _expand_roles(self, roles: set[str]) -> set[str]:
         """Expand roles using the role hierarchy (parent inherits child roles)."""
@@ -128,16 +165,21 @@ def _collect_mask_intents(rule: ASTNode) -> list[Intent]:
     mask_fields = rule.properties.get("maskFields", [])
     if not isinstance(mask_fields, list):
         return []
-    intents = [
-        Intent(kind="maskField", target=str(f))
-        for f in mask_fields
-    ]
-    intents.sort(key=lambda i: (i.target or ""))
+    intents = [Intent(kind="maskField", target=str(field)) for field in mask_fields]
+    intents.sort(key=lambda intent: intent.target or "")
     return intents
 
 
-def _eval_abac_condition(condition: dict[str, Any], attrs: dict[str, Any]) -> bool:
-    """Evaluate a simple ABAC condition dict against actor attributes."""
+def _eval_abac_condition(
+    condition: dict[str, Any],
+    attrs: dict[str, Any],
+    expr_engine: ExprEngine | None = None,
+) -> bool:
+    """Evaluate an ABAC condition dict against actor attributes."""
+    if "expr" in condition and expr_engine:
+        result = expr_engine.evaluate(condition["expr"], context={"actor": attrs})
+        return bool(result.value)
+
     for key, expected in condition.items():
         if attrs.get(key) != expected:
             return False

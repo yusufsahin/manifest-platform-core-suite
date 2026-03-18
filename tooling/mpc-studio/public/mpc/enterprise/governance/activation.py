@@ -143,8 +143,16 @@ class ActivationProtocol:
         # Step 5: Audit
         if audit_fn is not None:
             try:
-                audit_fn(bundle_hash)
-            except Exception:
+                if not audit_fn(bundle_hash):
+                    # Late stage failure - ROLLBACK SWAP
+                    self._active_artifact_hash = prev_hash
+                    return self._rollback(completed, Error(
+                        code="E_GOV_AUDIT_FAILED",
+                        message="Post-activation audit failed, rolled back.",
+                        severity="error",
+                    ))
+            except Exception as exc:
+                # Audit logging is best-effort after the swap is already committed.
                 pass
         completed.append(ActivationStep.AUDIT.value)
 

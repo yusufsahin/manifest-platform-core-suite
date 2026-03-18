@@ -29,6 +29,8 @@ from mpc.features.expr import ExprEngine, typecheck as expr_typecheck, evaluate 
 from mpc.kernel.meta.models import DomainMeta, FunctionDef
 from mpc.features.overlay.engine import OverlayEngine
 from mpc.features.policy.engine import PolicyEngine
+from mpc.tooling.validator import validate_semantic
+from mpc.features.workflow import GuardPort
 from mpc.features.workflow.fsm import WorkflowEngine
 
 
@@ -59,6 +61,13 @@ class FixtureResult:
 
 
 CategoryHandler = Callable[["ConformanceRunner", FixtureContext], dict[str, Any]]
+
+
+class _FailGuard:
+    """GuardPort that always returns False. Used by guard_fail fixtures."""
+
+    def check(self, trigger: str, context: dict[str, Any]) -> bool:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -97,8 +106,10 @@ class ConformanceRunner:
         self._handlers["acl"] = ConformanceRunner._handle_acl
         self._handlers["policy"] = ConformanceRunner._handle_policy
         self._handlers["compose"] = ConformanceRunner._handle_compose
+        self._handlers["evaluate_integration"] = ConformanceRunner._handle_evaluate_integration
         self._handlers["overlay"] = ConformanceRunner._handle_overlay
         self._handlers["governance"] = ConformanceRunner._handle_governance
+        self._handlers["validator"] = ConformanceRunner._handle_validator
 
     def register_handler(self, category: str, handler: CategoryHandler) -> None:
         """Register a custom handler for *category* (e.g. ``"expr"``)."""
@@ -289,7 +300,14 @@ class ConformanceRunner:
     def _handle_workflow(self, ctx: FixtureContext) -> dict[str, Any]:
         """Run workflow fixture: build FSM from input, validate or fire(event), return decision or error."""
         data = ctx.input_data
-        engine = WorkflowEngine.from_fixture_input(data)
+        meta = ctx.meta
+        guard_port: GuardPort | None = None
+        if meta.get("guard_behavior") == "fail":
+            guard_port = _FailGuard()
+
+        engine = WorkflowEngine.from_fixture_input(
+            data, guard_port=guard_port, auth_port=None
+        )
         event = data.get("event")
         if event is None:
             errors = engine.validate()
@@ -300,10 +318,15 @@ class ConformanceRunner:
                         "code": e.code,
                         "message": e.message,
                         "severity": e.severity,
-                    }
                 }
+            }
             return {"allow": True, "reasons": []}
-        result = engine.fire(str(event))
+        result = engine.fire(
+            str(event),
+            actor_roles=data.get("actor_roles") or data.get("actorRoles"),
+            actor_id=data.get("actor_id") or data.get("actorId"),
+            context=data.get("context") or {},
+        )
         if result.errors:
             e = result.errors[0]
             return {
@@ -385,34 +408,54 @@ class ConformanceRunner:
         return {"value": result.value, "type": result.type}
 
     def _handle_acl(self, ctx: FixtureContext) -> dict[str, Any]:
-        """Run ACL fixture: build AST from rules, run ACLEngine.check, return allow/reasons/intents."""
+        """Run ACL fixture: build AST from rules, run ACLEngine.check, return allow/reasons/intents.
+
+        Supports both RBAC and direct rule formats.
+        """
         data = ctx.input_data
         action = data.get("action", "")
         actor = data.get("actor") or {}
         actor_roles = actor.get("roles") or []
+        actor_attrs = actor.get("attrs") or actor.get("attributes") or None
         obj = data.get("object") or {}
         resource = obj.get("type", "entity")
         rules = data.get("rules") or []
         defs: list[ASTNode] = []
         for i, r in enumerate(rules):
-            role = r.get("role", "")
-            actions = r.get("actions", [])
-            mask_fields = r.get("maskFields", [])
-            for a in actions:
-                props: dict[str, Any] = {
-                    "action": a,
-                    "roles": [role],
-                    "effect": "allow",
-                    "resource": "*",
-                }
-                if mask_fields:
-                    props["maskFields"] = mask_fields
-                defs.append(ASTNode(kind="ACL", id=f"r{i}_{a}", properties=props))
-        ast = ManifestAST(schema_version=1, namespace="", name="", manifest_version="1", defs=defs)
+            if "action" in r and "actions" not in r:
+                node_id = r.get("id", f"r{i}")
+                props: dict[str, Any] = {k: v for k, v in r.items() if k != "id"}
+                defs.append(ASTNode(kind="ACL", id=node_id, properties=props))
+            else:
+                role = r.get("role", "")
+                actions = r.get("actions", [])
+                mask_fields = r.get("maskFields", [])
+                for a in actions:
+                    props = {
+                        "action": a,
+                        "roles": [role],
+                        "effect": "allow",
+                        "resource": "*",
+                    }
+                    if mask_fields:
+                        props["maskFields"] = mask_fields
+                    defs.append(ASTNode(kind="ACL", id=f"r{i}_{a}", properties=props))
+        ast = ManifestAST(
+            schema_version=1,
+            namespace="",
+            name="",
+            manifest_version="1",
+            defs=defs,
+        )
         engine = ACLEngine(ast=ast)
-        result: ACLResult = engine.check(action, resource, actor_roles=actor_roles)
+        result: ACLResult = engine.check(
+            action,
+            resource,
+            actor_roles=actor_roles,
+            actor_attrs=actor_attrs,
+        )
         out: dict[str, Any] = {
-            "allow": result.allowed,
+            "allow": result.allow,
             "reasons": [{"code": r.code} for r in result.reasons],
         }
         if result.intents:
@@ -473,6 +516,84 @@ class ConformanceRunner:
                 for r in d.get("reasons", [])
             ]
             decisions.append(Decision(allow=allow, reasons=reasons))
+        result = compose_decisions(decisions, strategy=strategy)
+        out: dict[str, Any] = {
+            "allow": result.allow,
+            "reasons": [{"code": r.code} for r in result.reasons],
+        }
+        if result.intents:
+            out["intents"] = [
+                {"kind": i.kind, "target": i.target} for i in result.intents
+            ]
+        return out
+
+    def _handle_evaluate_integration(self, ctx: FixtureContext) -> dict[str, Any]:
+        """Policy + ACL + compose end-to-end flow."""
+        data = ctx.input_data
+        event = data.get("event")
+        if event is None:
+            return {
+                "error": {
+                    "code": "E_PARSE_SYNTAX",
+                    "message": "Missing 'event' in input",
+                    "severity": "error",
+                }
+            }
+
+        flat_event = _flatten_dotted_keys(event)
+        policies = data.get("policies") or []
+        rules = data.get("rules") or []
+        strategy = data.get("strategy", "deny-wins")
+
+        defs: list[ASTNode] = []
+        for p in policies:
+            pid = p.get("id", "p")
+            props = dict(p)
+            props.pop("id", None)
+            defs.append(ASTNode(kind="Policy", id=pid, properties=props))
+        for i, r in enumerate(rules):
+            role = r.get("role", "")
+            actions = r.get("actions", [])
+            for a in actions:
+                defs.append(
+                    ASTNode(
+                        kind="ACL",
+                        id=f"r{i}_{a}",
+                        properties={
+                            "action": a,
+                            "roles": [role],
+                            "effect": "allow",
+                            "resource": r.get("resource", "*"),
+                        },
+                    )
+                )
+        ast = ManifestAST(
+            schema_version=1, namespace="", name="", manifest_version="1", defs=defs
+        )
+        meta = DomainMeta()
+        policy_engine = PolicyEngine(ast=ast, meta=meta)
+        acl_engine = ACLEngine(ast=ast)
+        policy_result = policy_engine.evaluate(flat_event)
+        actor = event.get("actor") or {}
+        actor_roles = actor.get("roles", []) if isinstance(actor, dict) else []
+        obj = event.get("object") or {}
+        resource = obj.get("type", "entity") if isinstance(obj, dict) else "entity"
+        action = event.get("action")
+        if action is None:
+            action = (event.get("name") or "unknown").split(".")[-1]
+        acl_result = acl_engine.check(action, resource, actor_roles=actor_roles)
+        decisions = [
+            Decision(
+                allow=policy_result.allow,
+                reasons=policy_result.reasons,
+                intents=policy_result.intents,
+            ),
+            Decision(
+                allow=acl_result.allow,
+                reasons=acl_result.reasons,
+                intents=acl_result.intents,
+            ),
+        ]
         result = compose_decisions(decisions, strategy=strategy)
         out: dict[str, Any] = {
             "allow": result.allow,
@@ -548,8 +669,35 @@ class ConformanceRunner:
         out = {"id": node.id, "kind": node.kind, "namespace": result.ast.namespace, **node.properties}
         return {k: v for k, v in out.items() if v is not None}
 
+    def _handle_validator(self, ctx: FixtureContext) -> dict[str, Any]:
+        """Run validator fixture: build AST from defs, run validate_semantic, return errors list."""
+        data = ctx.input_data
+        namespace = data.get("namespace", "test")
+        raw_defs = data.get("defs") or []
+        defs: list[ASTNode] = []
+        for d in raw_defs:
+            defs.append(
+                ASTNode(
+                    kind=d.get("kind", "Unknown"),
+                    id=d.get("id", ""),
+                    properties={k: v for k, v in d.items() if k not in ("kind", "id")},
+                )
+            )
+        ast = ManifestAST(
+            schema_version=1, namespace=namespace, name="", manifest_version="1", defs=defs
+        )
+        errors = validate_semantic(ast)
+        if errors:
+            return {
+                "errors": [
+                    {"code": e.code, "message": e.message, "severity": e.severity}
+                    for e in errors
+                ]
+            }
+        return {"valid": True}
+
     def _handle_governance(self, ctx: FixtureContext) -> dict[str, Any]:
-        """Run governance fixture: enterpriseMode + artifact -> signature required/invalid error or ok."""
+        """Run governance fixture: enterpriseMode + artifact -> signature/quota/attestation checks."""
         data = ctx.input_data
         enterprise = data.get("enterpriseMode", False)
         artifact = data.get("artifact") or {}
@@ -572,6 +720,28 @@ class ConformanceRunner:
                     "severity": "fatal",
                 }
             }
+        if data.get("checkQuota"):
+            quota_limits = data.get("quotaLimits") or {}
+            max_nodes = quota_limits.get("maxManifestNodes")
+            node_count = artifact.get("nodeCount") if isinstance(artifact, dict) else None
+            if max_nodes is not None and node_count is not None and node_count > max_nodes:
+                return {
+                    "error": {
+                        "code": "E_QUOTA_EXCEEDED",
+                        "message": f"Node count {node_count} exceeds tenant limit {max_nodes}",
+                        "severity": "error",
+                    }
+                }
+        if data.get("requireAttestation"):
+            attestations = artifact.get("attestations") if isinstance(artifact, dict) else None
+            if not attestations:
+                return {
+                    "error": {
+                        "code": "E_GOV_ATTESTATION_MISSING",
+                        "message": "Artifact has no attestations; attestation is required",
+                        "severity": "error",
+                    }
+                }
         return {"valid": True}
 
 

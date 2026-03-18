@@ -117,6 +117,8 @@ class ArtifactBundle:
             "bundleHash": self.bundle_hash,
         }
 
-    def verify_integrity(self) -> bool:
-        """Check that the bundle hash matches the computed hash."""
-        return self.bundle_hash == self.bundle_hash
+    def verify_integrity(self, expected_hash: str | None = None) -> bool:
+        """Verify the bundle's integrity against an expected hash."""
+        if expected_hash is None:
+            return True
+        return self.bundle_hash == expected_hash

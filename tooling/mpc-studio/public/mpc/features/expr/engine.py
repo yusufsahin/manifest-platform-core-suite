@@ -25,6 +25,7 @@ from mpc.features.expr.ir import (
     ExprUnary,
     from_dict as ir_from_dict,
 )
+from mpc.features.expr.compiler import BytecodeCompiler, BytecodeVM, OpCode
 from mpc.kernel.meta.models import DomainMeta, FunctionDef
 
 
@@ -38,6 +39,7 @@ class ExprResult:
     type: str = "any"
     steps: int = 0
     depth: int = 0
+    trace: list[dict[str, Any]] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -306,18 +308,27 @@ def _fn_now(args: list[Any], ctx: dict[str, Any]) -> str:
 
 @_register_builtin("regex")
 def _fn_regex(args: list[Any], ctx: dict[str, Any]) -> bool:
-    """Regex match — counts against the regex budget."""
+    """Regex match — with timeout protection."""
     if len(args) < 2:
         return False
     text = str(args[0])
     pattern = str(args[1])
     budget: _Budget | None = ctx.get("__budget__")
+    
     if budget:
         budget.count_regex()
+        # Early time check before potentially slow regex
+        budget._check_time()
+
+    # Note: Real ReDoS protection often requires a non-backtracking engine (like re2).
+    # Here we simulate with a budget check and relying on the overall engine timeout.
     try:
         return bool(re.search(pattern, text))
-    except re.error:
-        return False
+    except re.error as exc:
+        raise MPCError(
+            "E_EXPR_INVALID_REGEX",
+            f"Invalid regex pattern '{pattern}': {exc}",
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -333,8 +344,21 @@ def _eval_node(
     """Recursively evaluate an IR node."""
     budget.tick()
     budget.push_depth()
+    
+    trace: list[dict[str, Any]] | None = ctx.get("__trace__")
+    
     try:
-        return _eval_dispatch(node, ctx, meta, budget)
+        val = _eval_dispatch(node, ctx, meta, budget)
+        
+        if trace is not None:
+            trace.append({
+                "node": node.__class__.__name__,
+                "value": val,
+                "type": _infer_type(node, meta),
+                "depth": budget._depth
+            })
+            
+        return val
     finally:
         budget.pop_depth()
 
@@ -387,6 +411,18 @@ def _eval_binop(
     meta: DomainMeta,
     budget: _Budget,
 ) -> Any:
+    def _to_number(value: Any) -> int | float:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            return value
+        if value is None:
+            return 0
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0
+
     left = _eval_node(node.left, ctx, meta, budget)
     right = _eval_node(node.right, ctx, meta, budget)
     op = node.op
@@ -394,21 +430,21 @@ def _eval_binop(
     if op == "+":
         if isinstance(left, str) and isinstance(right, str):
             return left + right
-        return (left or 0) + (right or 0)
+        return _to_number(left) + _to_number(right)
     if op == "-":
-        return (left or 0) - (right or 0)
+        return _to_number(left) - _to_number(right)
     if op == "*":
-        return (left or 0) * (right or 0)
+        return _to_number(left) * _to_number(right)
     if op == "/":
-        r = right or 0
+        r = _to_number(right)
         if r == 0:
-            return None
-        return left / r
+            raise MPCError("E_EXPR_DIV_BY_ZERO", "Division by zero")
+        return _to_number(left) / r
     if op == "%":
-        r = right or 0
+        r = _to_number(right)
         if r == 0:
-            return None
-        return (left or 0) % r
+            raise MPCError("E_EXPR_DIV_BY_ZERO", "Modulo by zero")
+        return _to_number(left) % r
 
     if op == "==":
         return left == right
@@ -430,10 +466,15 @@ def _eval_binop(
 
     if op == "matches":
         budget.count_regex()
+        budget._check_time()
+        pattern = str(right)
         try:
-            return bool(re.search(str(right), str(left)))
-        except re.error:
-            return False
+            return bool(re.search(pattern, str(left)))
+        except re.error as exc:
+            raise MPCError(
+                "E_EXPR_INVALID_REGEX",
+                f"Invalid regex pattern '{pattern}': {exc}",
+            ) from exc
 
     return None
 
@@ -529,7 +570,11 @@ class ExprEngine:
     max_steps: int = 5000
     max_time_ms: float = 50.0
     max_regex_ops: int = 5000
+    max_total_defs: int = 5000
     clock: datetime | str | None = None
+    use_vm: bool = False
+    log_callback: Any | None = None
+    _bytecode_cache: dict[str, Any] = field(default_factory=dict, init=False)
 
     def typecheck(self, expr: str | dict | ExprNode) -> str:
         """Return the inferred type of *expr*, or raise on type mismatch."""
@@ -540,6 +585,8 @@ class ExprEngine:
         self,
         expr: str | dict | ExprNode,
         context: dict[str, Any] | None = None,
+        *,
+        enable_trace: bool = False,
     ) -> ExprResult:
         """Evaluate *expr* with optional *context* bindings."""
         node = self._to_node(expr)
@@ -555,8 +602,34 @@ class ExprEngine:
         if self.clock is not None:
             ctx.setdefault("__clock__", self.clock)
         ctx["__budget__"] = budget
+        trace: list[dict[str, Any]] | None = None
 
-        result_val = _eval_node(node, ctx, self.meta, budget)
+        if self.use_vm and not enable_trace:
+            # Simple string-key cache
+            expr_key = str(expr)
+            if expr_key in self._bytecode_cache:
+                instructions = self._bytecode_cache[expr_key]
+            else:
+                compiler = BytecodeCompiler()
+                instructions = compiler.compile(node)
+                self._bytecode_cache[expr_key] = instructions
+                
+            vm = BytecodeVM(builtins=_BUILTINS, budget=budget)
+            result_val = vm.execute(instructions, ctx, self.meta)
+        else:
+            trace = [] if enable_trace else None
+            if trace is not None:
+                ctx["__trace__"] = trace
+            result_val = _eval_node(node, ctx, self.meta, budget)
+
+        if self.log_callback:
+            self.log_callback({
+                "expr": str(expr),
+                "result": result_val,
+                "steps": budget._steps,
+                "timestamp": time.time()
+            })
+
         result_type = _infer_type(node, self.meta)
 
         return ExprResult(
@@ -564,6 +637,7 @@ class ExprEngine:
             type=result_type,
             steps=budget._steps,
             depth=budget._peak_depth,
+            trace=trace,
         )
 
     def _to_node(self, expr: str | dict | ExprNode) -> ExprNode:

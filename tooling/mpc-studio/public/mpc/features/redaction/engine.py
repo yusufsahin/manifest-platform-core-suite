@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import fnmatch
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass, asdict
 from typing import Any
+import traceback
 
 
 _DEFAULT_MASK = "***"
@@ -53,6 +54,14 @@ class RedactionEngine:
         return self._walk(data, "")
 
     def _walk(self, obj: Any, path: str) -> Any:
+        if is_dataclass(obj):
+            # Convert to dict for easier walk/mutate
+            obj_dict = asdict(obj)
+            redacted_dict = self._walk(obj_dict, path)
+            # We don't necessarily want to re-construct the dataclass here 
+            # as it might be used for output/logging. Return the dict.
+            return redacted_dict
+
         if isinstance(obj, dict):
             for key in list(obj.keys()):
                 child_path = f"{path}.{key}" if path else key
@@ -67,6 +76,21 @@ class RedactionEngine:
             return [self._walk(item, f"{path}[]") for item in obj]
 
         return obj
+
+    def redact_exception(self, e: Exception) -> str:
+        """Mask sensitive keys in an exception traceback."""
+        raw_trace = traceback.format_exc()
+        # Simple line-based masking for demo purposes; in production use a more robust parser
+        lines = raw_trace.splitlines()
+        redacted_lines = []
+        for line in lines:
+            line_redacted = line
+            for key in self.config.deny_keys:
+                if f"{key}=" in line.lower() or f"'{key}':" in line.lower():
+                    line_redacted = "[REDACTED TRACE LINE]"
+                    break
+            redacted_lines.append(line_redacted)
+        return "\n".join(redacted_lines)
 
     def _should_redact(self, key: str, full_path: str) -> bool:
         lower_key = key.lower()

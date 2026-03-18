@@ -7,6 +7,10 @@ Per MASTER_SPEC section 7:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mpc.kernel.meta.diff import MetaDiffResult
 
 
 @dataclass(frozen=True)
@@ -51,3 +55,10 @@ class DomainMeta:
     @property
     def function_names(self) -> frozenset[str]:
         return frozenset(f.name for f in self.allowed_functions)
+
+
+def diff_meta(old: DomainMeta, new: DomainMeta) -> "MetaDiffResult":
+    """Backward-compatible import shim for mpc.kernel.meta.diff.diff_meta."""
+    from mpc.kernel.meta.diff import diff_meta as _diff_meta
+
+    return _diff_meta(old, new)

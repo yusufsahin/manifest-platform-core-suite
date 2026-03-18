@@ -62,7 +62,30 @@ function App() {
   const [debugResult, setDebugResult] = useState<{ value: any; type: string | null; trace: any[] | null } | null>(null);
   const [activeTab, setActiveTab ] = useState<'preview' | 'debug' | 'ui'>('preview');
   const [sidebarTab, setSidebarTab] = useState('editor');
+  const [isEmbedded, setIsEmbedded] = useState(false);
   const validationTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('embedded') === 'true') {
+      setIsEmbedded(true);
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SET_DSL') {
+        setDsl(event.data.dsl);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  useEffect(() => {
+    if (isEmbedded) {
+      window.parent.postMessage({ type: 'UPDATE_DSL', dsl }, '*');
+    }
+  }, [dsl, isEmbedded]);
 
   useEffect(() => {
     if (validationTimeoutRef.current !== null) {
@@ -189,6 +212,9 @@ function App() {
   };
 
   const validationErrors = result?.errors ?? [];
+  const errorCount = validationErrors.filter((err: ValidationError) => err.severity === 'error').length;
+  const warningCount = validationErrors.filter((err: ValidationError) => err.severity !== 'error').length;
+  const hasValidationIssues = validationErrors.length > 0;
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#0a0b10] text-[#f3f4f6] font-sans overflow-hidden">
@@ -199,6 +225,7 @@ function App() {
         isSaving={isSaving} 
         debugMode={debugMode}
         onToggleDebug={() => setDebugMode(!debugMode)}
+        isEmbedded={isEmbedded}
       />
       
       <div className="flex flex-1 overflow-hidden">
@@ -207,9 +234,11 @@ function App() {
           result={result} 
           files={files} 
           activeFile={activeFileName}
+          onOpenFolder={handleOpenFolder}
           onFileSelect={handleFileSelect}
           activeTab={sidebarTab} 
           onTabChange={setSidebarTab} 
+          isEmbedded={isEmbedded}
         />
         
         <main className="flex-1 flex gap-4 p-4 overflow-hidden">
@@ -244,27 +273,33 @@ function App() {
           
           <div className="flex-1 flex flex-col gap-4 overflow-hidden">
             <div className="flex-1 glass rounded-2xl overflow-hidden border border-white/10 relative flex flex-col">
-              <div className="flex border-b border-white/5 bg-white/[0.02] p-1 gap-1">
+              <div className="flex border-b border-slate-800 bg-slate-900/60 px-2 py-1 gap-1">
                 <button 
                   onClick={() => setActiveTab('preview')}
-                  className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
-                    activeTab === 'preview' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all border ${
+                    activeTab === 'preview'
+                      ? 'bg-blue-500/20 text-blue-200 border-blue-500/30'
+                      : 'text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800/60'
                   }`}
                 >
                   Preview
                 </button>
                 <button 
                   onClick={() => setActiveTab('debug')}
-                  className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
-                    activeTab === 'debug' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all border ${
+                    activeTab === 'debug'
+                      ? 'bg-blue-500/20 text-blue-200 border-blue-500/30'
+                      : 'text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800/60'
                   }`}
                 >
                   Debugger
                 </button>
                 <button 
                   onClick={() => setActiveTab('ui')}
-                  className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
-                    activeTab === 'ui' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all border ${
+                    activeTab === 'ui'
+                      ? 'bg-blue-500/20 text-blue-200 border-blue-500/30'
+                      : 'text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-800/60'
                   }`}
                 >
                   UI Schema
@@ -285,19 +320,32 @@ function App() {
               </div>
             </div>
             
-            <div className="h-48 glass rounded-2xl p-4 border border-white/10 overflow-auto">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Validation Output</h3>
-              {validationErrors.length > 0 ? (
+            <div className="h-52 glass rounded-2xl p-4 border border-slate-700/70 overflow-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Validation Output</h3>
+                <div className="text-[11px] text-slate-400">
+                  {hasValidationIssues ? `${errorCount} errors, ${warningCount} warnings` : 'No issues'}
+                </div>
+              </div>
+              {hasValidationIssues ? (
                 <div className="space-y-2">
                   {validationErrors.map((err: ValidationError, i: number) => (
-                    <div key={i} className="text-sm text-red-400 font-mono">
-                      [{err.code}] {err.message}
+                    <div
+                      key={i}
+                      className={`rounded-lg px-3 py-2 border font-mono text-xs ${
+                        err.severity === 'error'
+                          ? 'bg-red-500/8 border-red-500/30 text-red-300'
+                          : 'bg-amber-500/8 border-amber-500/30 text-amber-300'
+                      }`}
+                    >
+                      <div className="font-semibold mb-1">[{err.code}] {err.severity.toUpperCase()}</div>
+                      <div>{err.message}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-emerald-400 font-mono">
-                  ✓ Semantic & structural validation passed.
+                <div className="rounded-lg px-3 py-2 border border-emerald-500/30 bg-emerald-500/8 text-emerald-300 text-sm font-mono">
+                  Semantic and structural validation passed.
                 </div>
               )}
             </div>

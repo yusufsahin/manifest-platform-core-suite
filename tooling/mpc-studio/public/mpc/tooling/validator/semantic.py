@@ -31,6 +31,7 @@ def validate_semantic(ast: ManifestAST) -> list[Error]:
     _check_namespace_conflicts(ast, errors)
     _check_workflow_refs(ast, errors)
     _check_workflow_structure(ast, errors)
+    _check_dead_ends_and_reachability(ast, errors)
     _check_cycles(ast, errors)
     return errors
 
@@ -181,6 +182,66 @@ def _check_workflow_structure(ast: ManifestAST, errors: list[Error]) -> None:
                     source=node.source,
                 )
             )
+
+
+def _check_dead_ends_and_reachability(ast: ManifestAST, errors: list[Error]) -> None:
+    """Identify dead-ends (non-final states with no exit) and orphaned states (cannot reach final)."""
+    for node in ast.defs:
+        if getattr(node, "kind", "") != "Workflow":
+            continue
+            
+        states = node.properties.get("states")
+        transitions = node.properties.get("transitions")
+        finals = set(node.properties.get("final_states", []))
+        
+        if not isinstance(states, list) or not isinstance(transitions, list):
+            continue
+            
+        # Build adjacency
+        out_edges: dict[str, list[str]] = {s: [] for s in states}
+        in_edges: dict[str, list[str]] = {s: [] for s in states}
+        for tr in transitions:
+            if isinstance(tr, dict):
+                src, tgt = tr.get("from"), tr.get("to")
+                if isinstance(src, str) and src in out_edges and isinstance(tgt, str):
+                    out_edges[src].append(tgt)
+                    if tgt in in_edges:
+                        in_edges[tgt].append(src)
+        
+        # Dead ends: non-final state with no out edges
+        for s in states:
+            if s not in finals and not out_edges[s]:
+                errors.append(
+                    Error(
+                        code="E_WF_DEAD_END",
+                        message=f"State '{s}' in workflow '{node.id}' is a dead-end (no exit and not final)",
+                        severity="warning",
+                        path=f"defs/{node.id}/states",
+                        source=node.source,
+                    )
+                )
+
+        # Orphaned states: cannot reach any final state
+        if finals:
+            can_reach_final: set[str] = set()
+            stack = list(finals)
+            while stack:
+                curr = stack.pop()
+                if curr not in can_reach_final:
+                    can_reach_final.add(curr)
+                    stack.extend(in_edges.get(curr, []))
+            
+            orphans = set(states) - can_reach_final
+            for o in sorted(orphans):
+                errors.append(
+                    Error(
+                        code="E_WF_ORPHANED_STATE",
+                        message=f"State '{o}' in workflow '{node.id}' cannot reach any final state",
+                        severity="warning",
+                        path=f"defs/{node.id}/states",
+                        source=node.source,
+                    )
+                )
 
 
 def _check_cycles(ast: ManifestAST, errors: list[Error]) -> None:
