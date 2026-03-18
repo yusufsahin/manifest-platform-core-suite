@@ -1,0 +1,46 @@
+{
+  "contractVersion": "1.0.0",
+  "runId": "golden-run-invalid-transition",
+  "tenantId": "tenant-default",
+  "actorId": "operator-1",
+  "generatedAt": "2026-03-18T00:00:00.000Z",
+  "steps": [
+    {
+      "stepId": "wf-step-1-invalid",
+      "event": "unknown-event",
+      "from": "START",
+      "to": "START",
+      "allow": false,
+      "guardResult": "not_applicable",
+      "reasons": [
+        {
+          "code": "R_WF_DENY",
+          "summary": "Transition does not exist for current state."
+        }
+      ],
+      "errors": [
+        {
+          "code": "INVALID_TRANSITION",
+          "message": "Transition does not exist for current state."
+        }
+      ],
+      "actionsExecuted": [],
+      "errorCode": "INVALID_TRANSITION",
+      "remediationHint": "Use one of the available transitions for the current state.",
+      "timestamp": "2026-03-18T00:00:00.000Z"
+    }
+  ],
+  "summary": {
+    "totalSteps": 1,
+    "successfulSteps": 0,
+    "failedSteps": 1,
+    "finalState": "START"
+  },
+  "errors": [
+    {
+      "stepId": "wf-step-1-invalid",
+      "code": "INVALID_TRANSITION",
+      "message": "Transition does not exist for current state."
+    }
+  ]
+}

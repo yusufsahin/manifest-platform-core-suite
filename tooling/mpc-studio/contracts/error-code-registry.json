@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "errorCodes": [
+    "AUTHZ_DENIED",
+    "EVENT_NAME_TOO_LONG",
+    "GUARD_FAILED",
+    "INVALID_TRANSITION",
+    "NO_INITIAL_STATE",
+    "NO_WORKFLOW_DEF",
+    "STEP_LIMIT_EXCEEDED",
+    "UNKNOWN_STATE",
+    "WORKFLOW_EXECUTION_FAILED",
+    "WORKFLOW_PAYLOAD_TOO_LARGE"
+  ],
+  "reasonCodes": [
+    "R_WF_ALLOW",
+    "R_WF_DENY",
+    "R_WF_GUARD_FAIL",
+    "R_WF_GUARD_PASS"
+  ]
+}

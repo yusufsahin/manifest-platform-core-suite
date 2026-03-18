@@ -1,0 +1,10 @@
+{
+  "currentVersion": "1.0.0",
+  "deprecationWindow": {
+    "minSupportedMinorVersions": 1
+  },
+  "compatibility": {
+    "allowPatchForward": true,
+    "allowMinorBackwardsWithinWindow": true
+  }
+}

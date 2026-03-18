@@ -1,4 +1,5 @@
 {
+  "clock": "system-utc",
   "preset": "preset-generic-min",
   "notes": "Policy allow + ACL allow -> allow"
 }

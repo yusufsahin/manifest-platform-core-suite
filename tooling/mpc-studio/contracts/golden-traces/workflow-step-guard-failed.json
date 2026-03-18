@@ -1,0 +1,46 @@
+{
+  "contractVersion": "1.0.0",
+  "runId": "golden-run-guard-failed",
+  "tenantId": "tenant-default",
+  "actorId": "operator-1",
+  "generatedAt": "2026-03-18T00:00:00.000Z",
+  "steps": [
+    {
+      "stepId": "wf-step-1-guard",
+      "event": "finish",
+      "from": "QUALIFYING",
+      "to": "QUALIFYING",
+      "allow": false,
+      "guardResult": "fail",
+      "reasons": [
+        {
+          "code": "R_WF_GUARD_FAIL",
+          "summary": "Guard expression evaluated to false."
+        }
+      ],
+      "errors": [
+        {
+          "code": "GUARD_FAILED",
+          "message": "Guard expression evaluated to false."
+        }
+      ],
+      "actionsExecuted": [],
+      "errorCode": "GUARD_FAILED",
+      "remediationHint": "Provide missing context fields or adjust guard expression.",
+      "timestamp": "2026-03-18T00:00:00.000Z"
+    }
+  ],
+  "summary": {
+    "totalSteps": 1,
+    "successfulSteps": 0,
+    "failedSteps": 1,
+    "finalState": "QUALIFYING"
+  },
+  "errors": [
+    {
+      "stepId": "wf-step-1-guard",
+      "code": "GUARD_FAILED",
+      "message": "Guard expression evaluated to false."
+    }
+  ]
+}

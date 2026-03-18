@@ -9,15 +9,19 @@ const PolicySimulator = ({ onSimulate }: PolicySimulatorProps) => {
   const [eventJson, setEventJson] = useState('{\n  "user": {\n    "role": "admin",\n    "id": 1\n  },\n  "action": "delete"\n}');
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSimulate = async () => {
     setLoading(true);
+    setErrorMessage(null);
     try {
       const event = JSON.parse(eventJson);
       const res = await onSimulate(event);
       setResult(res);
-    } catch (err) {
-      setResult({ error: "Invalid JSON payload" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Invalid JSON payload';
+      setResult({ error: 'Simulation failed' });
+      setErrorMessage(msg);
     } finally {
       setLoading(false);
     }
@@ -61,7 +65,7 @@ const PolicySimulator = ({ onSimulate }: PolicySimulatorProps) => {
             {result?.error ? (
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] flex items-center gap-2">
                 <XCircle className="w-4 h-4" />
-                {result.error}
+                {result.error}{errorMessage ? `: ${errorMessage}` : ''}
               </div>
             ) : result ? (
               <>
@@ -86,13 +90,34 @@ const PolicySimulator = ({ onSimulate }: PolicySimulatorProps) => {
                   </h3>
                   <div className="space-y-1">
                     {result.reasons?.map((r: any, i: number) => (
-                      <div key={i} className="text-[11px] text-gray-400 pl-5 border-l border-white/10 py-1">
+                      <div
+                        key={i}
+                        className={`text-[11px] pl-5 border-l py-1 ${
+                          String(r.code || '').includes('DENY') || String(r.code || '').includes('FAIL')
+                            ? 'text-amber-300 border-amber-500/30'
+                            : 'text-gray-400 border-white/10'
+                        }`}
+                      >
                         <span className="text-violet-400 font-mono mr-2">[{r.code}]</span>
                         {r.summary}
                       </div>
                     ))}
                     {(!result.reasons || result.reasons.length === 0) && (
                       <p className="text-[10px] text-gray-600 italic">No specific reasons provided</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Intents / Targets</h3>
+                  <div className="space-y-1">
+                    {result.intents?.map((intent: any, i: number) => (
+                      <div key={i} className="text-[11px] text-cyan-300 pl-4 border-l border-cyan-500/20 py-1 font-mono">
+                        {intent.kind} - {intent.target}
+                      </div>
+                    ))}
+                    {(!result.intents || result.intents.length === 0) && (
+                      <p className="text-[10px] text-gray-600 italic">No intents emitted.</p>
                     )}
                   </div>
                 </div>

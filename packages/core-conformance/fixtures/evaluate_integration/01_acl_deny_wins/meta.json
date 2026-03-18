@@ -1,4 +1,5 @@
 {
+  "clock": "system-utc",
   "preset": "preset-generic-min",
   "notes": "Policy allows, ACL denies (viewer not in rules) -> deny-wins"
 }

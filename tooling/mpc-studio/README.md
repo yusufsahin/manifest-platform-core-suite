@@ -6,6 +6,7 @@ MPC Studio is the official visual IDE for the **Manifest Platform Core (MPC) Sui
 
 - **PWA / Browser-Native**: Runs entirely in the browser using [Pyodide](https://pyodide.org/) for the MPC runtime.
 - **Visualizer**: Dynamic graph visualization of state machines and policy flows.
+- **Workflow Simulator**: Dedicated step-by-step state transition simulation (`step/run/back/reset/export`) with trace timeline.
 - **Monaco Editor**: Rich code editing with MPC DSL support.
 - **Local File System Access**: Direct integration with your local disk via the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API).
     - Open local folders and browse manifest files.
@@ -31,7 +32,23 @@ npm run dev
 
 # Build for production
 npm run build
+
+# Run fixture quality gate (workflow + contracts + validator + integration)
+npm run test:conformance
+
+# CI-equivalent local run
+npm run test:ci
+
+# Benchmark run (prints p50/p95)
+npm run test:benchmark
+
+# Benchmark run with threshold enforcement
+npm run test:benchmark:enforce
 ```
+
+## Operational Flags
+
+- `VITE_WORKFLOW_TRACE_V2=false`: emergency kill switch for trace v2 UI (falls back to legacy trace mode).
 
 ## Local File System Access
 
