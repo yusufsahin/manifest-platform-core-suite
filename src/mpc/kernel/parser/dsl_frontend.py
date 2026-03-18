@@ -13,7 +13,7 @@ from lark import Lark, Transformer, v_args, Token, Tree
 from lark.exceptions import UnexpectedInput
 
 from mpc.kernel.ast.models import ASTNode, ManifestAST
-from mpc.kernel.contracts.models import SourceMap
+from mpc.kernel.contracts.models import SourceMap, SourceSpan
 from mpc.kernel.errors import MPCError
 
 _GRAMMAR_PATH = Path(__file__).parent / "grammar.lark"

@@ -1,4 +1,4 @@
-import { ShieldCheck, User, Play, Lock, CheckCircle, XCircle } from 'lucide-react';
+import { ShieldCheck, User, Lock, CheckCircle, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { mpcEngine } from '../engine/mpc-engine';
 
@@ -95,7 +95,7 @@ const ACLExplorer = ({ definitions, dsl }: { definitions: any[], dsl: string }) 
         ) : (
           <div className="h-[200px] flex flex-col items-center justify-center border-2 border-dashed border-white/5 rounded-3xl text-gray-600 italic">
             <p>No ACL definitions found in the current manifest.</p>
-            <p className="text-[10px] mt-2 non-italic uppercase tracking-widest">Try adding "def ACL main { ... }"</p>
+            <p className="text-[10px] mt-2 non-italic uppercase tracking-widest">Try adding "def ACL main {'{ ... }'}"</p>
           </div>
         )}
       </div>

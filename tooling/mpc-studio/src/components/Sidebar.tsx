@@ -14,7 +14,7 @@ interface SidebarProps {
   result: ValidationSummary | null;
   files: File[];
   activeFile: string;
-  onOpenFolder: () => void;
+  onOpenFolder?: () => void;
   onFileSelect: (fileName: string) => void;
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -99,12 +99,14 @@ const Sidebar = ({ result, files, activeFile, onOpenFolder, onFileSelect, active
                 <div className="rounded-xl border border-slate-700/70 bg-slate-900/60 p-3 space-y-2">
                   <p className="text-[11px] text-slate-300 font-medium">No folder opened</p>
                   <p className="text-[10px] text-slate-500">Open a folder to load manifest files and activate validation.</p>
-                  <button
-                    onClick={onOpenFolder}
-                    className="text-[10px] font-semibold px-2.5 py-1.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
-                  >
-                    Open Folder
-                  </button>
+                  {onOpenFolder ? (
+                    <button
+                      onClick={onOpenFolder}
+                      className="text-[10px] font-semibold px-2.5 py-1.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
+                    >
+                      Open Folder
+                    </button>
+                  ) : null}
                 </div>
               )}
             </div>
