@@ -8,8 +8,13 @@ import DebugPanel from './components/DebugPanel';
 import DomainRegistry from './components/DomainRegistry';
 import PolicySimulator from './components/PolicySimulator';
 import WorkflowSimulator from './components/WorkflowSimulator';
+import RedactionPreview from './components/RedactionPreview';
+import ACLExplorer from './components/ACLExplorer';
+import GovernancePanel from './components/GovernancePanel';
+import OverlaySystemPanel from './components/OverlaySystemPanel';
 import UISchemaView from './components/UISchemaView';
 import { StatusBadge } from './components/StatusBadge';
+import { redactUnknown } from './lib/redaction';
 
 const VALIDATION_DEBOUNCE_MS = 350;
 
@@ -149,6 +154,14 @@ function App() {
     return await mpcEngine.evaluatePolicy(dsl, event);
   };
 
+  const handleRedactData = async (data: unknown) => {
+    try {
+      return await mpcEngine.redactData(dsl, data);
+    } catch {
+      return { data: redactUnknown(data) };
+    }
+  };
+
   const handleSave = async () => {
     if (!fileHandle) {
       // Fallback to download or save as if no handle
@@ -236,8 +249,21 @@ function App() {
                 />
               ) : sidebarTab === 'security' ? (
                 <PolicySimulator onSimulate={handleSimulatePolicy} />
+              ) : sidebarTab === 'redaction' ? (
+                <RedactionPreview dsl={dsl} onRedact={handleRedactData} />
+              ) : sidebarTab === 'acl' ? (
+                <ACLExplorer dsl={dsl} definitions={result?.status === 'success' ? (result.ast?.defs || []) : []} />
+              ) : sidebarTab === 'governance' ? (
+                <GovernancePanel
+                  namespace={result?.namespace}
+                  astHash={result?.ast_hash}
+                  errors={validationErrors}
+                  definitionCount={result?.status === 'success' ? (result.ast?.defs?.length || 0) : 0}
+                />
               ) : sidebarTab === 'workflow' ? (
                 <WorkflowSimulator dsl={dsl} />
+              ) : sidebarTab === 'overlays' ? (
+                <OverlaySystemPanel definitions={result?.status === 'success' ? (result.ast?.defs || []) : []} />
               ) : (
                 <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">
                   Feature '{sidebarTab}' coming soon

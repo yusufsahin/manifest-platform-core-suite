@@ -355,6 +355,47 @@ json.dumps({
         safeDeleteGlobal(py, 'DSL');
         safeDeleteGlobal(py, 'EVENT');
       }
+    } else if (type === 'REDACT_DATA') {
+      const { data } = payload as { data: unknown };
+      const redactValue = (value: unknown): unknown => {
+        if (typeof value === 'string') {
+          return value
+            .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[REDACTED_EMAIL]')
+            .replace(/\+?\d[\d\-\s().]{7,}\d/g, '[REDACTED_PHONE]')
+            .replace(/\b(?:sk|pk|token|secret|apikey|api_key)[-_]?[A-Z0-9]{6,}\b/gi, '[REDACTED_TOKEN]');
+        }
+        if (Array.isArray(value)) {
+          return value.map((item) => redactValue(item));
+        }
+        if (value && typeof value === 'object') {
+          return Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([key, nested]) => {
+              const lowered = key.toLowerCase();
+              if (/(password|secret|token|apikey|api_key|ssn|salary)/.test(lowered)) {
+                return [key, '[REDACTED]'];
+              }
+              return [key, redactValue(nested)];
+            }),
+          );
+        }
+        return value;
+      };
+      self.postMessage({ id, type: 'RESULT', payload: { data: redactValue(data) } });
+    } else if (type === 'SIMULATE_ACL') {
+      const { role, action } = payload as { role?: string; action?: string };
+      const normalizedRole = String(role ?? '').toLowerCase().trim();
+      const normalizedAction = String(action ?? '').toLowerCase().trim();
+      const privilegedRoles = new Set(['admin', 'owner', 'security_admin']);
+      const readonlyActions = new Set(['read', 'list', 'view', 'inspect']);
+      const allowed = privilegedRoles.has(normalizedRole) || readonlyActions.has(normalizedAction);
+      self.postMessage({
+        id,
+        type: 'RESULT',
+        payload: {
+          allowed,
+          reason: allowed ? 'Allowed by default ACL policy.' : 'Denied by default ACL policy.',
+        },
+      });
     } else if (type === 'WORKFLOW_STEP') {
       const {
         dsl,
