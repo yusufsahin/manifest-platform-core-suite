@@ -6,6 +6,8 @@ import { createWorkflowSnapshot, restoreWorkflowSnapshot } from '../services/wor
 
 interface WorkflowSimulatorProps {
   dsl: string;
+  defaultTenantId?: string;
+  useTenantActiveManifest?: boolean;
 }
 
 const defaultLimits: WorkflowLimits = {
@@ -30,9 +32,9 @@ const defaultEventQueue = JSON.stringify(
   2,
 );
 
-const WorkflowSimulator = ({ dsl }: WorkflowSimulatorProps) => {
+const WorkflowSimulator = ({ dsl, defaultTenantId = 'tenant-default', useTenantActiveManifest = false }: WorkflowSimulatorProps) => {
   const traceUiV2Enabled = import.meta.env.VITE_WORKFLOW_TRACE_V2 !== 'false';
-  const [tenantId, setTenantId] = useState('tenant-default');
+  const [tenantId, setTenantId] = useState(defaultTenantId);
   const [actorId, setActorId] = useState('operator-1');
   const [actorRolesInput, setActorRolesInput] = useState('admin,operator');
   const [eventName, setEventName] = useState('begin');
@@ -42,7 +44,7 @@ const WorkflowSimulator = ({ dsl }: WorkflowSimulatorProps) => {
   const [permissions, setPermissions] = useState<WorkflowPermissionSet>(defaultPermissions);
   const [session, setSession] = useState<WorkflowSession>({
     runId: crypto.randomUUID(),
-    tenantId: 'tenant-default',
+    tenantId: defaultTenantId,
     actorId: 'operator-1',
     initialState: '',
     currentState: '',
@@ -111,6 +113,7 @@ const WorkflowSimulator = ({ dsl }: WorkflowSimulatorProps) => {
       const parsedContext = safeParse<Record<string, unknown>>(eventContextJson, {});
       const response = await mpcEngine.workflowStep({
         dsl,
+        useTenantActiveManifest,
         event: eventName,
         context: parsedContext,
         currentState: session.currentState || undefined,
@@ -150,6 +153,7 @@ const WorkflowSimulator = ({ dsl }: WorkflowSimulatorProps) => {
       const queue = safeParse<Array<{ event: string; context?: Record<string, unknown> }>>(eventQueueJson, []);
       const response = await mpcEngine.workflowRun({
         dsl,
+        useTenantActiveManifest,
         events: queue,
         initialState: session.initialState || undefined,
         actorId,
@@ -245,19 +249,19 @@ const WorkflowSimulator = ({ dsl }: WorkflowSimulatorProps) => {
         <input value={actorRolesInput} onChange={(event) => setActorRolesInput(event.target.value)} placeholder="roles (comma separated)" className="col-span-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-gray-200" />
         <input value={eventName} onChange={(event) => setEventName(event.target.value)} placeholder="single step event" className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-gray-200" />
         <div className="grid grid-cols-3 gap-2">
-          <input type="number" value={limits.maxSteps} onChange={(event) => setLimits((prev) => ({ ...prev, maxSteps: Number(event.target.value || 0) }))} className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-[10px] text-gray-200" />
-          <input type="number" value={limits.maxPayloadBytes} onChange={(event) => setLimits((prev) => ({ ...prev, maxPayloadBytes: Number(event.target.value || 0) }))} className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-[10px] text-gray-200" />
-          <input type="number" value={limits.maxEventNameLength} onChange={(event) => setLimits((prev) => ({ ...prev, maxEventNameLength: Number(event.target.value || 0) }))} className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-[10px] text-gray-200" />
+          <input type="number" aria-label="max steps" title="max steps" value={limits.maxSteps} onChange={(event) => setLimits((prev) => ({ ...prev, maxSteps: Number(event.target.value || 0) }))} className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-[10px] text-gray-200" />
+          <input type="number" aria-label="max payload bytes" title="max payload bytes" value={limits.maxPayloadBytes} onChange={(event) => setLimits((prev) => ({ ...prev, maxPayloadBytes: Number(event.target.value || 0) }))} className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-[10px] text-gray-200" />
+          <input type="number" aria-label="max event name length" title="max event name length" value={limits.maxEventNameLength} onChange={(event) => setLimits((prev) => ({ ...prev, maxEventNameLength: Number(event.target.value || 0) }))} className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-[10px] text-gray-200" />
         </div>
-        <textarea value={eventContextJson} onChange={(event) => setEventContextJson(event.target.value)} className="col-span-2 h-20 bg-black/40 border border-white/10 rounded-lg p-2 text-[10px] font-mono text-cyan-300 resize-none" />
-        <textarea value={eventQueueJson} onChange={(event) => setEventQueueJson(event.target.value)} className="col-span-2 h-24 bg-black/40 border border-white/10 rounded-lg p-2 text-[10px] font-mono text-violet-300 resize-none" />
+        <textarea aria-label="step event context json" title="step event context json" placeholder='{"source":"studio"}' value={eventContextJson} onChange={(event) => setEventContextJson(event.target.value)} className="col-span-2 h-20 bg-black/40 border border-white/10 rounded-lg p-2 text-[10px] font-mono text-cyan-300 resize-none" />
+        <textarea aria-label="event queue json" title="event queue json" placeholder='[{"event":"begin"}]' value={eventQueueJson} onChange={(event) => setEventQueueJson(event.target.value)} className="col-span-2 h-24 bg-black/40 border border-white/10 rounded-lg p-2 text-[10px] font-mono text-violet-300 resize-none" />
       </div>
 
       <div className="px-3 py-2 border-b border-white/5 flex items-center gap-4 text-[10px] text-gray-400 uppercase">
-        <label><input type="checkbox" checked={permissions.read} onChange={(event) => setPermissions((prev) => ({ ...prev, read: event.target.checked }))} /> read</label>
-        <label><input type="checkbox" checked={permissions.simulate} onChange={(event) => setPermissions((prev) => ({ ...prev, simulate: event.target.checked }))} /> simulate</label>
-        <label><input type="checkbox" checked={permissions.export} onChange={(event) => setPermissions((prev) => ({ ...prev, export: event.target.checked }))} /> export</label>
-        <label><input type="checkbox" checked={permissions.reset} onChange={(event) => setPermissions((prev) => ({ ...prev, reset: event.target.checked }))} /> reset</label>
+        <label><input type="checkbox" title="read permission" checked={permissions.read} onChange={(event) => setPermissions((prev) => ({ ...prev, read: event.target.checked }))} /> read</label>
+        <label><input type="checkbox" title="simulate permission" checked={permissions.simulate} onChange={(event) => setPermissions((prev) => ({ ...prev, simulate: event.target.checked }))} /> simulate</label>
+        <label><input type="checkbox" title="export permission" checked={permissions.export} onChange={(event) => setPermissions((prev) => ({ ...prev, export: event.target.checked }))} /> export</label>
+        <label><input type="checkbox" title="reset permission" checked={permissions.reset} onChange={(event) => setPermissions((prev) => ({ ...prev, reset: event.target.checked }))} /> reset</label>
       </div>
 
       <div className="grid grid-cols-4 gap-2 px-3 pt-3">

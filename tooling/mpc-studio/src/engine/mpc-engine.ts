@@ -36,6 +36,26 @@ class RemoteRuntimeError extends Error {
   }
 }
 
+interface RuntimeSourceOptions {
+  dsl: string;
+  artifactId?: string;
+  useTenantActiveManifest?: boolean;
+}
+
+export interface RuleArtifactSummary {
+  id: string;
+  tenant_id: string;
+  status: string;
+  version: number;
+  checksum: string;
+  created_at: string;
+}
+
+export interface RuleArtifactDetail extends RuleArtifactSummary {
+  manifest_text: string;
+  signature?: string | null;
+}
+
 export class MPCEngine {
   private worker: Worker;
   private pendingRequests: Map<string, { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = new Map();
@@ -173,6 +193,35 @@ export class MPCEngine {
     throw new Error('REMOTE_RUNTIME_FAILED');
   }
 
+  private async putRemote<T>(path: string, payload: unknown): Promise<T> {
+    const url = `${this.runtimeBaseUrl()}${path}`;
+    const csrfCookieName = String(import.meta.env.VITE_MPC_CSRF_COOKIE_NAME ?? 'servera_csrf_token');
+    const csrfHeaderName = String(import.meta.env.VITE_MPC_CSRF_HEADER_NAME ?? 'X-CSRF-Token');
+    const csrfToken = this.readCookie(csrfCookieName);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': this.createIdempotencyKey(),
+    };
+    const tenantHeader = (payload as { tenant_id?: string })?.tenant_id;
+    if (tenantHeader) {
+      headers['X-Tenant-Id'] = tenantHeader;
+    }
+    if (csrfToken) {
+      headers[csrfHeaderName] = csrfToken;
+    }
+    const response = await fetch(url, {
+      method: 'PUT',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { detail?: { message?: string }; message?: string };
+      throw new Error(body?.detail?.message || body?.message || `REMOTE_RUNTIME_${response.status}`);
+    }
+    return (await response.json()) as T;
+  }
+
   private readCookie(name: string): string | null {
     if (typeof document === 'undefined' || !document.cookie) {
       return null;
@@ -188,13 +237,31 @@ export class MPCEngine {
     return null;
   }
 
-  private async evaluatePolicyRemote(dsl: string, event: any): Promise<any> {
-    const tenantId = String((event as { tenantId?: string })?.tenantId ?? '');
-    return this.postRemote('/runtime/policy/evaluate', {
-      tenant_id: tenantId || undefined,
-      source: { manifest_text: dsl },
-      event,
+  private buildRuntimeSource(options: RuntimeSourceOptions): { manifest_text?: string; artifact_id?: string } {
+    if (options.artifactId) {
+      return { artifact_id: options.artifactId };
+    }
+    if (options.useTenantActiveManifest) {
+      return {};
+    }
+    return { manifest_text: options.dsl };
+  }
+
+  private async getRemote<T>(path: string, tenantId: string): Promise<T> {
+    const url = new URL(`${this.runtimeBaseUrl()}${path}`, window.location.origin);
+    url.searchParams.set('tenant_id', tenantId);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Tenant-Id': tenantId,
+      },
     });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { detail?: { message?: string }; message?: string };
+      throw new Error(body?.detail?.message || body?.message || `REMOTE_RUNTIME_${response.status}`);
+    }
+    return (await response.json()) as T;
   }
 
   private async workflowStepRemote(payload: WorkflowStepRequest): Promise<WorkflowStepResponse> {
@@ -218,7 +285,11 @@ export class MPCEngine {
       available_transitions: Array<{ from: string; event: string; to: string; guard?: string | null }>;
     }>('/runtime/workflow/step', {
       tenant_id: payload.tenantId,
-      source: { manifest_text: payload.dsl },
+      source: this.buildRuntimeSource({
+        dsl: payload.dsl,
+        artifactId: payload.artifactId,
+        useTenantActiveManifest: payload.useTenantActiveManifest,
+      }),
       event: payload.event,
       current_state: payload.currentState,
       initial_state: payload.initialState,
@@ -265,7 +336,11 @@ export class MPCEngine {
       available_transitions: Array<{ from: string; event: string; to: string; guard?: string | null }>;
     }>('/runtime/workflow/run', {
       tenant_id: payload.tenantId,
-      source: { manifest_text: payload.dsl },
+      source: this.buildRuntimeSource({
+        dsl: payload.dsl,
+        artifactId: payload.artifactId,
+        useTenantActiveManifest: payload.useTenantActiveManifest,
+      }),
       events: payload.events,
       initial_state: payload.initialState,
     });
@@ -305,10 +380,29 @@ export class MPCEngine {
     });
   }
 
-  async evaluatePolicy(dsl: string, event: any): Promise<any> {
+  async evaluatePolicy(
+    dsl: string,
+    event: any,
+    options?: { tenantId?: string; artifactId?: string; useTenantActiveManifest?: boolean },
+  ): Promise<any> {
+    const enrichedEvent =
+      options?.tenantId && !(event as { tenantId?: string })?.tenantId
+        ? { ...event, tenantId: options.tenantId }
+        : event;
     if (this.runtimeMode() === 'remote' && !this.isCircuitOpen()) {
       try {
-        return await this.evaluatePolicyRemote(dsl, event);
+        return await this.postRemote('/runtime/policy/evaluate', {
+          tenant_id:
+            options?.tenantId ||
+            String((enrichedEvent as { tenantId?: string })?.tenantId ?? '') ||
+            undefined,
+          source: this.buildRuntimeSource({
+            dsl,
+            artifactId: options?.artifactId,
+            useTenantActiveManifest: options?.useTenantActiveManifest,
+          }),
+          event: enrichedEvent,
+        });
       } catch (error) {
         if (error instanceof RemoteRuntimeError && KNOWN_RUNTIME_ERROR_CODES.has(error.code)) {
           throw error;
@@ -318,7 +412,7 @@ export class MPCEngine {
     }
     return this.postMessage<any>({
       type: 'EVALUATE_POLICY',
-      payload: { dsl, event }
+      payload: { dsl, event: enrichedEvent }
     });
   }
 
@@ -429,6 +523,46 @@ export class MPCEngine {
       },
       errors,
     };
+  }
+
+  async listRuleArtifacts(tenantId: string): Promise<RuleArtifactSummary[]> {
+    const response = await this.getRemote<{ items: RuleArtifactSummary[] }>('', tenantId);
+    return response.items || [];
+  }
+
+  async getRuleArtifact(tenantId: string, artifactId: string): Promise<RuleArtifactDetail> {
+    return this.getRemote<RuleArtifactDetail>(`/${artifactId}`, tenantId);
+  }
+
+  async createRuleArtifact(payload: {
+    tenantId: string;
+    manifestText: string;
+    signature?: string | null;
+  }): Promise<{ id: string; status: string; checksum: string }> {
+    return this.postRemote<{ id: string; status: string; checksum: string }>('', {
+      tenant_id: payload.tenantId,
+      manifest_text: payload.manifestText,
+      signature: payload.signature ?? null,
+    });
+  }
+
+  async updateRuleArtifact(payload: {
+    tenantId: string;
+    artifactId: string;
+    manifestText: string;
+    signature?: string | null;
+  }): Promise<RuleArtifactDetail> {
+    return this.putRemote<RuleArtifactDetail>(`/${payload.artifactId}`, {
+      tenant_id: payload.tenantId,
+      manifest_text: payload.manifestText,
+      signature: payload.signature ?? null,
+    });
+  }
+
+  async activateRuleArtifact(tenantId: string, artifactId: string): Promise<{ id: string; status: string }> {
+    return this.postRemote<{ id: string; status: string }>(`/${artifactId}/activate`, {
+      tenant_id: tenantId,
+    });
   }
 }
 

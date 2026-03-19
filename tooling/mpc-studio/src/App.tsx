@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { mpcEngine } from './engine/mpc-engine';
+import { mpcEngine, type RuleArtifactSummary } from './engine/mpc-engine';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import ManifestEditor from './components/ManifestEditor';
@@ -71,7 +71,16 @@ function App() {
   const [activeTab, setActiveTab ] = useState<'preview' | 'debug' | 'ui'>('preview');
   const [sidebarTab, setSidebarTab] = useState('editor');
   const [engineError, setEngineError] = useState<string | null>(null);
+  const [artifactItems, setArtifactItems] = useState<RuleArtifactSummary[]>([]);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string>('');
+  const [selectedArtifactStatus, setSelectedArtifactStatus] = useState<string>('');
+  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [artifactStatusMessage, setArtifactStatusMessage] = useState<string>('');
   const validationTimeoutRef = useRef<number | null>(null);
+  const queryParams = new URLSearchParams(window.location.search);
+  const tenantFromUrl = queryParams.get('tenant_id') || 'tenant-default';
+  const runtimeFromUrl = queryParams.get('runtime');
+  const useTenantActiveManifest = runtimeFromUrl === 'remote' && tenantFromUrl.length > 0;
 
   useEffect(() => {
     if (validationTimeoutRef.current !== null) {
@@ -106,6 +115,28 @@ function App() {
       }
     };
   }, [dsl]);
+
+  useEffect(() => {
+    if (!useTenantActiveManifest) return;
+    const loadArtifacts = async () => {
+      setArtifactsLoading(true);
+      setArtifactStatusMessage('');
+      try {
+        const items = await mpcEngine.listRuleArtifacts(tenantFromUrl);
+        setArtifactItems(items);
+        const active = items.find((item) => item.status === 'active') ?? items[0];
+        if (active) {
+          setSelectedArtifactId(active.id);
+          setSelectedArtifactStatus(active.status);
+        }
+      } catch (error) {
+        setArtifactStatusMessage(error instanceof Error ? error.message : String(error));
+      } finally {
+        setArtifactsLoading(false);
+      }
+    };
+    void loadArtifacts();
+  }, [tenantFromUrl, useTenantActiveManifest]);
 
   const handleOpenFolder = async () => {
     try {
@@ -151,7 +182,10 @@ function App() {
   };
 
   const handleSimulatePolicy = async (event: any) => {
-    return await mpcEngine.evaluatePolicy(dsl, event);
+    return await mpcEngine.evaluatePolicy(dsl, event, {
+      tenantId: tenantFromUrl,
+      useTenantActiveManifest,
+    });
   };
 
   const handleRedactData = async (data: unknown) => {
@@ -159,6 +193,77 @@ function App() {
       return await mpcEngine.redactData(dsl, data);
     } catch {
       return { data: redactUnknown(data) };
+    }
+  };
+
+  const refreshArtifacts = async () => {
+    if (!useTenantActiveManifest) return;
+    setArtifactsLoading(true);
+    setArtifactStatusMessage('');
+    try {
+      const items = await mpcEngine.listRuleArtifacts(tenantFromUrl);
+      setArtifactItems(items);
+      if (selectedArtifactId) {
+        const selected = items.find((item) => item.id === selectedArtifactId);
+        setSelectedArtifactStatus(selected?.status ?? '');
+      }
+    } catch (error) {
+      setArtifactStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setArtifactsLoading(false);
+    }
+  };
+
+  const loadSelectedArtifact = async () => {
+    if (!selectedArtifactId) return;
+    setArtifactStatusMessage('');
+    try {
+      const artifact = await mpcEngine.getRuleArtifact(tenantFromUrl, selectedArtifactId);
+      setDsl(artifact.manifest_text);
+      setActiveFileName(`artifact:${artifact.id}`);
+      setSelectedArtifactStatus(artifact.status);
+      setArtifactStatusMessage(`Loaded artifact ${artifact.id}`);
+    } catch (error) {
+      setArtifactStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const saveDraftArtifact = async () => {
+    setArtifactStatusMessage('');
+    try {
+      if (selectedArtifactId && selectedArtifactStatus === 'draft') {
+        const updated = await mpcEngine.updateRuleArtifact({
+          tenantId: tenantFromUrl,
+          artifactId: selectedArtifactId,
+          manifestText: dsl,
+        });
+        setSelectedArtifactStatus(updated.status);
+        setArtifactStatusMessage(`Updated draft ${updated.id}`);
+      } else {
+        const created = await mpcEngine.createRuleArtifact({
+          tenantId: tenantFromUrl,
+          manifestText: dsl,
+        });
+        setSelectedArtifactId(created.id);
+        setSelectedArtifactStatus(created.status);
+        setArtifactStatusMessage(`Created draft ${created.id}`);
+      }
+      await refreshArtifacts();
+    } catch (error) {
+      setArtifactStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const activateSelectedArtifact = async () => {
+    if (!selectedArtifactId) return;
+    setArtifactStatusMessage('');
+    try {
+      const activated = await mpcEngine.activateRuleArtifact(tenantFromUrl, selectedArtifactId);
+      setSelectedArtifactStatus(activated.status);
+      setArtifactStatusMessage(`Activated artifact ${activated.id}`);
+      await refreshArtifacts();
+    } catch (error) {
+      setArtifactStatusMessage(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -237,12 +342,52 @@ function App() {
           <div className="w-[45%] flex flex-col gap-4 overflow-hidden">
             <div className="flex-1 glass rounded-2xl overflow-hidden border border-white/10 relative">
               {sidebarTab === 'editor' ? (
-                <ManifestEditor 
-                  dsl={dsl} 
-                  onChange={setDsl}
-                  fileName={activeFileName}
-                  errors={result?.status === 'error' ? (result.errors as any[]) : []}
-                />
+                <div className="h-full flex flex-col">
+                  {useTenantActiveManifest ? (
+                    <div className="px-3 py-2 border-b border-white/10 bg-white/[0.02] flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-wide text-gray-500">Tenant Artifact</span>
+                      <select
+                        aria-label="tenant artifacts"
+                        title="tenant artifacts"
+                        value={selectedArtifactId}
+                        onChange={(event) => {
+                          setSelectedArtifactId(event.target.value);
+                          const selected = artifactItems.find((item) => item.id === event.target.value);
+                          setSelectedArtifactStatus(selected?.status ?? '');
+                        }}
+                        className="text-[11px] bg-black/30 border border-white/15 rounded px-2 py-1 text-gray-200 min-w-[220px]"
+                      >
+                        <option value="">Select artifact</option>
+                        {artifactItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.id.slice(0, 8)}... | v{item.version} | {item.status}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={refreshArtifacts} className="px-2 py-1 text-[10px] rounded bg-slate-700 text-slate-100">
+                        Refresh
+                      </button>
+                      <button type="button" onClick={loadSelectedArtifact} className="px-2 py-1 text-[10px] rounded bg-cyan-700 text-cyan-100" disabled={!selectedArtifactId}>
+                        Load
+                      </button>
+                      <button type="button" onClick={saveDraftArtifact} className="px-2 py-1 text-[10px] rounded bg-violet-700 text-violet-100">
+                        Save Draft
+                      </button>
+                      <button type="button" onClick={activateSelectedArtifact} className="px-2 py-1 text-[10px] rounded bg-emerald-700 text-emerald-100" disabled={!selectedArtifactId}>
+                        Activate
+                      </button>
+                      <span className="text-[10px] text-gray-400">{artifactsLoading ? 'Loading...' : artifactStatusMessage}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex-1 min-h-0">
+                    <ManifestEditor 
+                      dsl={dsl} 
+                      onChange={setDsl}
+                      fileName={activeFileName}
+                      errors={result?.status === 'error' ? (result.errors as any[]) : []}
+                    />
+                  </div>
+                </div>
               ) : sidebarTab === 'registry' ? (
                 <DomainRegistry 
                   definitions={result?.status === 'success' ? (result.ast?.defs || []) : []}
@@ -261,7 +406,11 @@ function App() {
                   definitionCount={result?.status === 'success' ? (result.ast?.defs?.length || 0) : 0}
                 />
               ) : sidebarTab === 'workflow' ? (
-                <WorkflowSimulator dsl={dsl} />
+                <WorkflowSimulator
+                  dsl={dsl}
+                  defaultTenantId={tenantFromUrl}
+                  useTenantActiveManifest={useTenantActiveManifest}
+                />
               ) : sidebarTab === 'overlays' ? (
                 <OverlaySystemPanel definitions={result?.status === 'success' ? (result.ast?.defs || []) : []} />
               ) : (
