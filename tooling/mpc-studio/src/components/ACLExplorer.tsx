@@ -1,8 +1,16 @@
 import { ShieldCheck, User, Lock, CheckCircle, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { mpcEngine } from '../engine/mpc-engine';
+import type { DefinitionDescriptor } from '../types/definition';
+import type { PanelAdapterContext } from '../types/panelAdapter';
 
-const ACLExplorer = ({ definitions, dsl }: { definitions: any[], dsl: string }) => {
+interface ACLExplorerProps {
+  definitions: DefinitionDescriptor[];
+  dsl: string;
+  context?: PanelAdapterContext;
+}
+
+const ACLExplorer = ({ definitions, dsl, context }: ACLExplorerProps) => {
   const aclDefs = definitions.filter(d => d.kind === 'ACL' || d.kind === 'AccessControl');
   const [role, setRole] = useState('admin');
   const [resource, setResource] = useState('order');
@@ -28,6 +36,11 @@ const ACLExplorer = ({ definitions, dsl }: { definitions: any[], dsl: string }) 
           <div>
             <h2 className="text-xl font-bold tracking-tight">ACL Explorer</h2>
             <p className="text-sm text-gray-500">Analyze and test access control rules in your manifest.</p>
+            {context?.selectedDefinition ? (
+              <p className="text-[10px] text-violet-400 mt-1 font-mono">
+                Active definition: {context.selectedDefinition.kind}:{context.selectedDefinition.id}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -87,7 +100,7 @@ const ACLExplorer = ({ definitions, dsl }: { definitions: any[], dsl: string }) 
               </div>
               <div className="space-y-2">
                  <pre className="text-[11px] font-mono text-gray-500 bg-black/20 p-3 rounded-xl">
-                   {JSON.stringify(acl.properties, null, 2)}
+                   {JSON.stringify(acl, null, 2)}
                  </pre>
               </div>
             </div>

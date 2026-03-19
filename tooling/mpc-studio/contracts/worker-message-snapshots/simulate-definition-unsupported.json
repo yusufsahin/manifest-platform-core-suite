@@ -1,0 +1,27 @@
+{
+  "contractVersion": "2.0.0",
+  "requestId": "req-simulate-unsupported",
+  "timestamp": "2026-03-19T23:58:00.000Z",
+  "type": "SIMULATE_DEFINITION",
+  "payload": {
+    "kind": "FutureKind",
+    "definitionId": "future-main",
+    "status": "error",
+    "output": null,
+    "diagnostics": [
+      {
+        "code": "SIMULATOR_UNSUPPORTED_KIND",
+        "message": "No simulator adapter for selected kind.",
+        "severity": "warning"
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "SIMULATOR_UNSUPPORTED_KIND",
+      "message": "No simulator adapter for selected kind.",
+      "severity": "warning"
+    }
+  ],
+  "durationMs": 4
+}

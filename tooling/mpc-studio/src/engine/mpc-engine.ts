@@ -1,5 +1,6 @@
 import {
   WORKFLOW_CONTRACT_VERSION,
+  type WorkflowDefinition,
   type WorkflowRunRequest,
   type WorkflowRunResponse,
   type WorkflowSession,
@@ -7,6 +8,14 @@ import {
   type WorkflowStepResponse,
   type WorkflowTraceExport,
 } from '../types/workflow';
+import type {
+  DefinitionDescriptor,
+  DefinitionDiagnostic,
+  DefinitionPreviewResult,
+  DefinitionSimulationResult,
+  WorkerEnvelope,
+} from '../types/definition';
+import { isDefinitionCapability, normalizeDefinitionDescriptor } from '../types/definition';
 import { redactUnknown } from '../lib/redaction';
 
 const KNOWN_RUNTIME_ERROR_CODES = new Set([
@@ -42,6 +51,15 @@ interface RuntimeSourceOptions {
   useTenantActiveManifest?: boolean;
 }
 
+export interface WorkerRuntimeMetrics {
+  contractVersion: string;
+  requestId: string;
+  type: string;
+  timestamp: string;
+  durationMs?: number;
+  diagnosticCount: number;
+}
+
 export interface RuleArtifactSummary {
   id: string;
   tenant_id: string;
@@ -61,6 +79,7 @@ export class MPCEngine {
   private pendingRequests: Map<string, { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = new Map();
   private remoteFailures = 0;
   private circuitOpenedAt: number | null = null;
+  private lastWorkerEnvelope: WorkerRuntimeMetrics | null = null;
 
   constructor() {
     this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
@@ -90,6 +109,37 @@ export class MPCEngine {
       });
       this.worker.postMessage({ id, ...message });
     });
+  }
+
+  private isWorkerEnvelope<TPayload>(value: unknown): value is WorkerEnvelope<TPayload> {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Partial<WorkerEnvelope<TPayload>>;
+    return (
+      typeof candidate.contractVersion === 'string' &&
+      typeof candidate.requestId === 'string' &&
+      typeof candidate.timestamp === 'string' &&
+      typeof candidate.type === 'string' &&
+      'payload' in candidate
+    );
+  }
+
+  private unwrapEnvelopePayload<TPayload>(value: unknown): TPayload {
+    if (this.isWorkerEnvelope<TPayload>(value)) {
+      this.lastWorkerEnvelope = {
+        contractVersion: value.contractVersion,
+        requestId: value.requestId,
+        type: value.type,
+        timestamp: value.timestamp,
+        durationMs: value.durationMs,
+        diagnosticCount: value.diagnostics?.length ?? 0,
+      };
+      return value.payload;
+    }
+    return value as TPayload;
+  }
+
+  getLastWorkerMetrics(): WorkerRuntimeMetrics | null {
+    return this.lastWorkerEnvelope;
   }
 
   private runtimeMode(): 'local' | 'remote' {
@@ -290,6 +340,7 @@ export class MPCEngine {
         artifactId: payload.artifactId,
         useTenantActiveManifest: payload.useTenantActiveManifest,
       }),
+      workflow_id: payload.workflowId,
       event: payload.event,
       current_state: payload.currentState,
       initial_state: payload.initialState,
@@ -341,6 +392,7 @@ export class MPCEngine {
         artifactId: payload.artifactId,
         useTenantActiveManifest: payload.useTenantActiveManifest,
       }),
+      workflow_id: payload.workflowId,
       events: payload.events,
       initial_state: payload.initialState,
     });
@@ -369,8 +421,75 @@ export class MPCEngine {
     return this.postMessage<unknown>({ type: 'PARSE_AND_VALIDATE', payload: dsl });
   }
 
-  async getMermaid(dsl: string): Promise<string> {
-    return this.postMessage<string>({ type: 'MERMAID_EXPORT', payload: dsl });
+  async getMermaid(dsl: string, workflowId?: string): Promise<string> {
+    const preview = await this.previewDefinition({
+      dsl,
+      definitionId: workflowId,
+      kindHint: 'Workflow',
+    });
+    return preview.renderer === 'mermaid' ? preview.content : '';
+  }
+
+  async listDefinitions(dsl: string): Promise<DefinitionDescriptor[]> {
+    const response = await this.postMessage<unknown>({
+      type: 'LIST_DEFINITIONS',
+      payload: { dsl },
+    });
+    const payload = this.unwrapEnvelopePayload<{ items?: unknown[]; diagnostics?: DefinitionDiagnostic[] }>(response);
+    const diagnostics = payload.diagnostics ?? [];
+    return (payload.items ?? []).map((item) => {
+      const descriptor = normalizeDefinitionDescriptor(item);
+      const rawCaps =
+        item && typeof item === 'object' && Array.isArray((item as { capabilities?: unknown }).capabilities)
+          ? ((item as { capabilities: unknown[] }).capabilities.filter(
+              (capability): capability is string => typeof capability === 'string',
+            ) as string[])
+          : [];
+      const unsupported = rawCaps
+        .filter((capability) => !isDefinitionCapability(capability))
+        .map<DefinitionDiagnostic>((capability) => ({
+          code: 'UNKNOWN_CAPABILITY',
+          message: `Definition '${descriptor.id}' has unsupported capability '${capability}'.`,
+          severity: 'warning',
+        }));
+      const related = diagnostics.filter((diagnostic) => diagnostic.message.includes(descriptor.id));
+      return {
+        ...descriptor,
+        diagnostics: [...descriptor.diagnostics, ...related, ...unsupported],
+      };
+    });
+  }
+
+  async previewDefinition(payload: { dsl: string; definitionId?: string; kindHint?: string }): Promise<DefinitionPreviewResult> {
+    const response = await this.postMessage<unknown>({
+      type: 'PREVIEW_DEFINITION',
+      payload,
+    });
+    return this.unwrapEnvelopePayload<DefinitionPreviewResult>(response);
+  }
+
+  async simulateDefinition(payload: {
+    dsl: string;
+    definitionId?: string;
+    kindHint?: string;
+    input?: unknown;
+  }): Promise<DefinitionSimulationResult> {
+    const response = await this.postMessage<unknown>({
+      type: 'SIMULATE_DEFINITION',
+      payload,
+    });
+    return this.unwrapEnvelopePayload<DefinitionSimulationResult>(response);
+  }
+
+  async listWorkflows(dsl: string): Promise<WorkflowDefinition[]> {
+    const definitions = await this.listDefinitions(dsl);
+    return definitions
+      .filter((definition) => definition.kind === 'Workflow')
+      .map((definition) => ({
+        id: definition.id,
+        name: definition.name,
+        kind: definition.kind,
+      }));
   }
 
   async evaluateExpr(expr: string, context?: any, enableTrace: boolean = false): Promise<any> {

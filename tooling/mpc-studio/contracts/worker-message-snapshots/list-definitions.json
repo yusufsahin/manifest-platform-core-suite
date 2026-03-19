@@ -1,0 +1,42 @@
+{
+  "contractVersion": "2.0.0",
+  "requestId": "req-list-definitions",
+  "timestamp": "2026-03-19T14:22:00.000Z",
+  "type": "LIST_DEFINITIONS",
+  "payload": {
+    "items": [
+      {
+        "id": "onboarding",
+        "name": "Onboarding",
+        "kind": "Workflow",
+        "version": "1.0.0",
+        "capabilities": ["preview_mermaid", "simulate_workflow", "diagnostics"],
+        "diagnostics": []
+      },
+      {
+        "id": "riskPolicy",
+        "name": "Risk Policy",
+        "kind": "Policy",
+        "version": "1.0.0",
+        "capabilities": ["preview_json", "simulate_policy", "diagnostics"],
+        "diagnostics": []
+      },
+      {
+        "id": "futureKindSample",
+        "name": "Future Kind Sample",
+        "kind": "UnknownKind",
+        "version": "1.0.0",
+        "capabilities": ["preview_json", "inspector", "diagnostics"],
+        "diagnostics": [
+          {
+            "code": "UNKNOWN_KIND_FALLBACK",
+            "message": "Kind 'UnknownKind' is routed to generic inspector fallback.",
+            "severity": "warning"
+          }
+        ]
+      }
+    ]
+  },
+  "diagnostics": [],
+  "durationMs": 13
+}

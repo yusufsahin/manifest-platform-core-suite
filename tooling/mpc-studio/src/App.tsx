@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { mpcEngine, type RuleArtifactSummary } from './engine/mpc-engine';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -13,8 +13,16 @@ import ACLExplorer from './components/ACLExplorer';
 import GovernancePanel from './components/GovernancePanel';
 import OverlaySystemPanel from './components/OverlaySystemPanel';
 import UISchemaView from './components/UISchemaView';
+import DefinitionInspector from './components/DefinitionInspector';
 import { StatusBadge } from './components/StatusBadge';
 import { redactUnknown } from './lib/redaction';
+import type { DefinitionDescriptor } from './types/definition';
+import type { PanelAdapterContext } from './types/panelAdapter';
+import {
+  resolveDefaultSidebarTab,
+  resolveSidebarMenu,
+  shouldUseFallbackInspector,
+} from './lib/capabilityRouter';
 
 const VALIDATION_DEBOUNCE_MS = 350;
 
@@ -54,8 +62,34 @@ def Workflow onboarding "Onboarding" {
 }`;
 
 function App() {
+  const metadataDrivenRouterEnabled = useMemo(() => {
+    const envEnabled = import.meta.env.VITE_METADATA_DRIVEN_ROUTER !== 'false';
+    const params = new URLSearchParams(window.location.search);
+    const override = String(params.get('metadataDrivenRouter') ?? '').toLowerCase().trim();
+    if (override === 'legacy' || override === 'off' || override === 'false') {
+      return false;
+    }
+    if (override === 'metadata' || override === 'on' || override === 'true') {
+      return true;
+    }
+    return envEnabled;
+  }, []);
+  const devWindow = window as Window & {
+    __MPC_ENGINE__?: typeof mpcEngine;
+    __MPC_STUDIO__?: {
+      setDsl: (nextDsl: string) => void;
+      setSelectedDefinition: (definitionId: string) => void;
+      setSidebarTab: (tab: string) => void;
+    };
+  };
+
   if (import.meta.env.DEV) {
-    (window as unknown as { __MPC_ENGINE__?: typeof mpcEngine }).__MPC_ENGINE__ = mpcEngine;
+    devWindow.__MPC_ENGINE__ = mpcEngine;
+    devWindow.__MPC_STUDIO__ = {
+      setDsl: (nextDsl: string) => setDsl(nextDsl),
+      setSelectedDefinition: (definitionId: string) => setSelectedDefinitionId(definitionId),
+      setSidebarTab: (tab: string) => setSidebarTab(tab),
+    };
   }
 
   const [dsl, setDsl] = useState(DEFAULT_DSL);
@@ -76,11 +110,46 @@ function App() {
   const [selectedArtifactStatus, setSelectedArtifactStatus] = useState<string>('');
   const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [artifactStatusMessage, setArtifactStatusMessage] = useState<string>('');
+  const [definitionItems, setDefinitionItems] = useState<DefinitionDescriptor[]>([]);
+  const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>('');
   const validationTimeoutRef = useRef<number | null>(null);
   const queryParams = new URLSearchParams(window.location.search);
   const tenantFromUrl = queryParams.get('tenant_id') || 'tenant-default';
   const runtimeFromUrl = queryParams.get('runtime');
   const useTenantActiveManifest = runtimeFromUrl === 'remote' && tenantFromUrl.length > 0;
+
+  const selectedDefinition = useMemo(
+    () => definitionItems.find((item) => item.id === selectedDefinitionId),
+    [definitionItems, selectedDefinitionId],
+  );
+
+  const menuGroups = useMemo(
+    () => resolveSidebarMenu(selectedDefinition, metadataDrivenRouterEnabled),
+    [selectedDefinition, metadataDrivenRouterEnabled],
+  );
+
+  const availableSidebarTabs = useMemo(
+    () => new Set(menuGroups.flatMap((group) => group.items.map((item) => item.id))),
+    [menuGroups],
+  );
+
+  const panelContext = useMemo<PanelAdapterContext>(
+    () => ({
+      dsl,
+      selectedDefinition,
+      definitions: definitionItems,
+      metadataDrivenRouterEnabled,
+    }),
+    [dsl, selectedDefinition, definitionItems, metadataDrivenRouterEnabled],
+  );
+
+  useEffect(() => {
+    if (availableSidebarTabs.has(sidebarTab)) {
+      return;
+    }
+    const defaultTab = resolveDefaultSidebarTab(selectedDefinition, metadataDrivenRouterEnabled);
+    setSidebarTab(defaultTab);
+  }, [availableSidebarTabs, sidebarTab, selectedDefinition, metadataDrivenRouterEnabled]);
 
   useEffect(() => {
     if (validationTimeoutRef.current !== null) {
@@ -93,6 +162,14 @@ function App() {
       try {
         const res = await mpcEngine.parseAndValidate(dsl) as ValidationResult;
         setResult(res);
+        const definitions = await mpcEngine.listDefinitions(dsl);
+        setDefinitionItems(definitions);
+        setSelectedDefinitionId((prev) => {
+          if (definitions.some((item) => item.id === prev)) {
+            return prev;
+          }
+          return definitions[0]?.id ?? '';
+        });
 
         if (debugMode && res.status === 'success') {
            // Auto-run a sample eval for now to show trace
@@ -103,6 +180,8 @@ function App() {
         const message = err instanceof Error ? err.message : String(err);
         setEngineError(message);
         setResult(null);
+        setDefinitionItems([]);
+        setSelectedDefinitionId('');
         console.error(err);
       } finally {
         setIsLoading(false);
@@ -315,6 +394,123 @@ function App() {
   };
 
   const validationErrors = result?.errors ?? [];
+  const astDefinitions = result?.status === 'success' ? (result.ast?.defs || []) : [];
+  const lastWorkerMetrics = mpcEngine.getLastWorkerMetrics();
+  const fallbackInspector =
+    shouldUseFallbackInspector(selectedDefinition, sidebarTab, metadataDrivenRouterEnabled);
+  const selectedWorkflowId = selectedDefinition?.kind === 'Workflow' ? selectedDefinition.id : undefined;
+
+  const renderSidebarPanel = () => {
+    if (fallbackInspector) {
+      return (
+        <DefinitionInspector
+          definition={selectedDefinition}
+          reason={`'${sidebarTab}' panel is not mapped for kind '${selectedDefinition?.kind}'.`}
+        />
+      );
+    }
+
+    if (sidebarTab === 'editor') {
+      return (
+        <div className="h-full flex flex-col">
+          {useTenantActiveManifest ? (
+            <div className="px-3 py-2 border-b border-white/10 bg-white/[0.02] flex flex-wrap items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wide text-gray-500">Tenant Artifact</span>
+              <select
+                aria-label="tenant artifacts"
+                title="tenant artifacts"
+                value={selectedArtifactId}
+                onChange={(event) => {
+                  setSelectedArtifactId(event.target.value);
+                  const selected = artifactItems.find((item) => item.id === event.target.value);
+                  setSelectedArtifactStatus(selected?.status ?? '');
+                }}
+                className="text-[11px] bg-black/30 border border-white/15 rounded px-2 py-1 text-gray-200 min-w-[220px]"
+              >
+                <option value="">Select artifact</option>
+                {artifactItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.id.slice(0, 8)}... | v{item.version} | {item.status}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={refreshArtifacts} className="px-2 py-1 text-[10px] rounded bg-slate-700 text-slate-100">
+                Refresh
+              </button>
+              <button type="button" onClick={loadSelectedArtifact} className="px-2 py-1 text-[10px] rounded bg-cyan-700 text-cyan-100" disabled={!selectedArtifactId}>
+                Load
+              </button>
+              <button type="button" onClick={saveDraftArtifact} className="px-2 py-1 text-[10px] rounded bg-violet-700 text-violet-100">
+                Save Draft
+              </button>
+              <button type="button" onClick={activateSelectedArtifact} className="px-2 py-1 text-[10px] rounded bg-emerald-700 text-emerald-100" disabled={!selectedArtifactId}>
+                Activate
+              </button>
+              <span className="text-[10px] text-gray-400">{artifactsLoading ? 'Loading...' : artifactStatusMessage}</span>
+            </div>
+          ) : null}
+          <div className="flex-1 min-h-0">
+            <ManifestEditor
+              dsl={dsl}
+              onChange={setDsl}
+              fileName={activeFileName}
+              errors={result?.status === 'error' ? (result.errors as any[]) : []}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (sidebarTab === 'registry') {
+      return <DomainRegistry definitions={astDefinitions} />;
+    }
+    if (sidebarTab === 'security') {
+      return <PolicySimulator onSimulate={handleSimulatePolicy} context={panelContext} />;
+    }
+    if (sidebarTab === 'redaction') {
+      return <RedactionPreview dsl={dsl} onRedact={handleRedactData} />;
+    }
+    if (sidebarTab === 'acl') {
+      return <ACLExplorer dsl={dsl} definitions={definitionItems} context={panelContext} />;
+    }
+    if (sidebarTab === 'governance') {
+      return (
+        <GovernancePanel
+          namespace={result?.namespace}
+          astHash={result?.ast_hash}
+          errors={validationErrors}
+          definitionCount={astDefinitions.length}
+          context={panelContext}
+        />
+      );
+    }
+    if (sidebarTab === 'workflow') {
+      if (!selectedWorkflowId) {
+        return (
+          <DefinitionInspector
+            definition={selectedDefinition}
+            reason="Workflow simulator requires a Workflow definition selection."
+          />
+        );
+      }
+      return (
+        <WorkflowSimulator
+          dsl={dsl}
+          workflowId={selectedWorkflowId}
+          defaultTenantId={tenantFromUrl}
+          useTenantActiveManifest={useTenantActiveManifest}
+        />
+      );
+    }
+    if (sidebarTab === 'overlays') {
+      return <OverlaySystemPanel definitions={definitionItems} context={panelContext} />;
+    }
+    return (
+      <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">
+        Feature '{sidebarTab}' coming soon
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#0a0b10] text-[#f3f4f6] font-sans overflow-hidden">
@@ -329,95 +525,19 @@ function App() {
       
       <div className="flex flex-1 overflow-hidden">
         <Sidebar 
-          dsl={dsl} 
           result={result} 
           files={files} 
           activeFile={activeFileName}
           onFileSelect={handleFileSelect}
           activeTab={sidebarTab} 
           onTabChange={setSidebarTab} 
+          menuGroups={menuGroups}
         />
         
         <main className="flex-1 flex gap-4 p-4 overflow-hidden">
           <div className="w-[45%] flex flex-col gap-4 overflow-hidden">
             <div className="flex-1 glass rounded-2xl overflow-hidden border border-white/10 relative">
-              {sidebarTab === 'editor' ? (
-                <div className="h-full flex flex-col">
-                  {useTenantActiveManifest ? (
-                    <div className="px-3 py-2 border-b border-white/10 bg-white/[0.02] flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-wide text-gray-500">Tenant Artifact</span>
-                      <select
-                        aria-label="tenant artifacts"
-                        title="tenant artifacts"
-                        value={selectedArtifactId}
-                        onChange={(event) => {
-                          setSelectedArtifactId(event.target.value);
-                          const selected = artifactItems.find((item) => item.id === event.target.value);
-                          setSelectedArtifactStatus(selected?.status ?? '');
-                        }}
-                        className="text-[11px] bg-black/30 border border-white/15 rounded px-2 py-1 text-gray-200 min-w-[220px]"
-                      >
-                        <option value="">Select artifact</option>
-                        {artifactItems.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.id.slice(0, 8)}... | v{item.version} | {item.status}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" onClick={refreshArtifacts} className="px-2 py-1 text-[10px] rounded bg-slate-700 text-slate-100">
-                        Refresh
-                      </button>
-                      <button type="button" onClick={loadSelectedArtifact} className="px-2 py-1 text-[10px] rounded bg-cyan-700 text-cyan-100" disabled={!selectedArtifactId}>
-                        Load
-                      </button>
-                      <button type="button" onClick={saveDraftArtifact} className="px-2 py-1 text-[10px] rounded bg-violet-700 text-violet-100">
-                        Save Draft
-                      </button>
-                      <button type="button" onClick={activateSelectedArtifact} className="px-2 py-1 text-[10px] rounded bg-emerald-700 text-emerald-100" disabled={!selectedArtifactId}>
-                        Activate
-                      </button>
-                      <span className="text-[10px] text-gray-400">{artifactsLoading ? 'Loading...' : artifactStatusMessage}</span>
-                    </div>
-                  ) : null}
-                  <div className="flex-1 min-h-0">
-                    <ManifestEditor 
-                      dsl={dsl} 
-                      onChange={setDsl}
-                      fileName={activeFileName}
-                      errors={result?.status === 'error' ? (result.errors as any[]) : []}
-                    />
-                  </div>
-                </div>
-              ) : sidebarTab === 'registry' ? (
-                <DomainRegistry 
-                  definitions={result?.status === 'success' ? (result.ast?.defs || []) : []}
-                />
-              ) : sidebarTab === 'security' ? (
-                <PolicySimulator onSimulate={handleSimulatePolicy} />
-              ) : sidebarTab === 'redaction' ? (
-                <RedactionPreview dsl={dsl} onRedact={handleRedactData} />
-              ) : sidebarTab === 'acl' ? (
-                <ACLExplorer dsl={dsl} definitions={result?.status === 'success' ? (result.ast?.defs || []) : []} />
-              ) : sidebarTab === 'governance' ? (
-                <GovernancePanel
-                  namespace={result?.namespace}
-                  astHash={result?.ast_hash}
-                  errors={validationErrors}
-                  definitionCount={result?.status === 'success' ? (result.ast?.defs?.length || 0) : 0}
-                />
-              ) : sidebarTab === 'workflow' ? (
-                <WorkflowSimulator
-                  dsl={dsl}
-                  defaultTenantId={tenantFromUrl}
-                  useTenantActiveManifest={useTenantActiveManifest}
-                />
-              ) : sidebarTab === 'overlays' ? (
-                <OverlaySystemPanel definitions={result?.status === 'success' ? (result.ast?.defs || []) : []} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">
-                  Feature '{sidebarTab}' coming soon
-                </div>
-              )}
+              {renderSidebarPanel()}
             </div>
           </div>
           
@@ -448,10 +568,31 @@ function App() {
                 >
                   UI Schema
                 </button>
+                <div className="ml-auto flex items-center gap-2 pr-2">
+                  <span className="text-[10px] uppercase tracking-widest text-gray-500">Definition</span>
+                  <select
+                    aria-label="definition selector"
+                    title="definition selector"
+                    value={selectedDefinitionId}
+                    onChange={(event) => setSelectedDefinitionId(event.target.value)}
+                    className="text-[10px] bg-black/30 border border-white/15 rounded px-2 py-1 text-gray-200 min-w-[170px]"
+                  >
+                    {definitionItems.length === 0 ? <option value="">None</option> : null}
+                    {definitionItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        [{item.kind}] {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="flex-1 overflow-hidden">
                 {activeTab === 'preview' ? (
-                  <Visualizer dsl={dsl} />
+                  <Visualizer
+                    dsl={dsl}
+                    definitionId={selectedDefinitionId || undefined}
+                    definitionKind={selectedDefinition?.kind}
+                  />
                 ) : activeTab === 'debug' ? (
                   <DebugPanel 
                     trace={debugResult?.trace || null} 
@@ -485,6 +626,13 @@ function App() {
                   Validation result pending.
                 </div>
               )}
+              {lastWorkerMetrics ? (
+                <div className="mt-3 text-[10px] text-gray-500 font-mono border-t border-white/5 pt-2">
+                  worker:{' '}
+                  {lastWorkerMetrics.type} | v{lastWorkerMetrics.contractVersion} |{' '}
+                  {lastWorkerMetrics.durationMs ?? 0}ms | diag:{lastWorkerMetrics.diagnosticCount}
+                </div>
+              ) : null}
             </div>
           </div>
         </main>

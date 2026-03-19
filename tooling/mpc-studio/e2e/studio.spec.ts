@@ -24,6 +24,32 @@ async function waitForEngineReady(page: import('@playwright/test').Page) {
   await expect(page.getByText(/\[ENGINE_ERROR\]/)).toHaveCount(0);
 }
 
+async function setStudioDsl(
+  page: import('@playwright/test').Page,
+  dsl: string,
+  definitionId?: string,
+) {
+  await page.evaluate(
+    async ({ dslText, selectedId }) => {
+      const studio = (
+        window as unknown as {
+          __MPC_STUDIO__?: {
+            setDsl: (nextDsl: string) => void;
+            setSelectedDefinition: (id: string) => void;
+          };
+        }
+      ).__MPC_STUDIO__;
+      if (!studio) throw new Error('__MPC_STUDIO__ missing');
+      studio.setDsl(dslText);
+      await new Promise((resolve) => window.setTimeout(resolve, 900));
+      if (selectedId) {
+        studio.setSelectedDefinition(selectedId);
+      }
+    },
+    { dslText: dsl, selectedId: definitionId ?? '' },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -52,8 +78,15 @@ test.describe('MPC Studio — Gate C smoke', () => {
   // ─── Engine boot ───────────────────────────────────────────────────────────
 
   test('Pyodide engine initialises within 60 s', async ({ page }) => {
-    // The engine status badge starts as "Initializing engine…"
-    await expect(page.getByText(/Initializing engine/i)).toBeVisible({ timeout: 5_000 });
+    // On warm starts the loading badge can be skipped; assert either state.
+    const initBadge = page.getByText(/Initializing engine/i);
+    const liveBadge = page.getByText('Local Engine Live');
+    await expect
+      .poll(
+        async () => (await initBadge.count()) > 0 || (await liveBadge.count()) > 0,
+        { timeout: 10_000 },
+      )
+      .toBe(true);
 
     // Then transitions to "Local Engine Live"
     await waitForEngineReady(page);
@@ -178,16 +211,36 @@ test.describe('MPC Studio — Gate C smoke', () => {
   // ─── Sidebar navigation ───────────────────────────────────────────────────
 
   test('sidebar navigation items are all visible', async ({ page }) => {
-    const navItems = [
+    const defaultNavItems = [
       'Manifest Editor',
       'Domain Registry',
-      'Policy Simulator',
+      'Redaction Preview',
       'Workflow Engine',
-      'Overlay System',
+      'Governance',
     ];
-    for (const label of navItems) {
+    for (const label of defaultNavItems) {
       await expect(page.getByText(label)).toBeVisible();
     }
+
+    const policyDsl = `@schema 1
+@namespace "demo.gatec.menu"
+@name "gate_c_menu"
+@version "1.0.0"
+
+def Workflow onboarding "Onboarding" {
+  initial: "START"
+  states: ["START", "DONE"]
+  transitions: [
+    {"from": "START", "on": "finish", "to": "DONE"}
+  ]
+}
+
+def Policy riskPolicy "Risk Policy" {
+  rules: []
+}`;
+    await setStudioDsl(page, policyDsl, 'riskPolicy');
+    await expect(page.getByText('Policy Simulator')).toBeVisible();
+    await expect(page.getByText('Workflow Engine')).toHaveCount(0);
   });
 
   test('workspace panel shows "No folder opened" by default', async ({ page }) => {

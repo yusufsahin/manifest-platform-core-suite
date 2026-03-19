@@ -1,0 +1,15 @@
+{
+  "contractVersion": "2.0.0",
+  "requestId": "req-preview-definition",
+  "timestamp": "2026-03-19T14:22:10.000Z",
+  "type": "PREVIEW_DEFINITION",
+  "payload": {
+    "kind": "Workflow",
+    "definitionId": "onboarding",
+    "renderer": "mermaid",
+    "content": "stateDiagram-v2\n  [*] --> START\n  START --> QUALIFYING: begin\n  QUALIFYING --> DONE: finish\n  DONE --> [*]",
+    "diagnostics": []
+  },
+  "diagnostics": [],
+  "durationMs": 9
+}

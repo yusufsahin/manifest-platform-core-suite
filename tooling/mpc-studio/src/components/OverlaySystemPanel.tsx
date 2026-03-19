@@ -1,19 +1,15 @@
 import { Layers, Sparkles } from 'lucide-react';
-
-interface OverlayDefinition {
-  kind: string;
-  id: string;
-  name?: string;
-  properties: Record<string, unknown>;
-}
+import type { DefinitionDescriptor } from '../types/definition';
+import type { PanelAdapterContext } from '../types/panelAdapter';
 
 interface OverlaySystemPanelProps {
-  definitions: OverlayDefinition[];
+  definitions: DefinitionDescriptor[];
+  context?: PanelAdapterContext;
 }
 
 const OVERLAY_KINDS = new Set(['Overlay', 'OverlayRule', 'Projection', 'ViewOverlay']);
 
-const OverlaySystemPanel = ({ definitions }: OverlaySystemPanelProps) => {
+const OverlaySystemPanel = ({ definitions, context }: OverlaySystemPanelProps) => {
   const overlays = definitions.filter((definition) => OVERLAY_KINDS.has(definition.kind));
 
   return (
@@ -21,6 +17,11 @@ const OverlaySystemPanel = ({ definitions }: OverlaySystemPanelProps) => {
       <div className="p-4 border-b border-white/5 flex items-center gap-2">
         <Layers className="w-4 h-4 text-blue-400" />
         <h2 className="text-xs font-bold uppercase tracking-widest text-white">Overlay System</h2>
+        {context?.selectedDefinition ? (
+          <span className="ml-auto text-[10px] text-blue-200/80 font-mono">
+            {context.selectedDefinition.kind}:{context.selectedDefinition.id}
+          </span>
+        ) : null}
       </div>
 
       <div className="p-3 border-b border-white/5 grid grid-cols-2 gap-3">
@@ -49,7 +50,7 @@ const OverlaySystemPanel = ({ definitions }: OverlaySystemPanelProps) => {
                 </span>
               </div>
               <pre className="text-[10px] font-mono text-gray-400 overflow-auto">
-                {JSON.stringify(overlay.properties, null, 2)}
+                {JSON.stringify(overlay, null, 2)}
               </pre>
             </div>
           ))

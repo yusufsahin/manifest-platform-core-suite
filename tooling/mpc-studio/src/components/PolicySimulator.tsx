@@ -1,11 +1,13 @@
 import { Shield, Play, CheckCircle2, XCircle, Info } from 'lucide-react';
 import { useState } from 'react';
+import type { PanelAdapterContext } from '../types/panelAdapter';
 
 interface PolicySimulatorProps {
   onSimulate: (event: any) => Promise<any>;
+  context?: PanelAdapterContext;
 }
 
-const PolicySimulator = ({ onSimulate }: PolicySimulatorProps) => {
+const PolicySimulator = ({ onSimulate, context }: PolicySimulatorProps) => {
   const [eventJson, setEventJson] = useState('{\n  "user": {\n    "role": "admin",\n    "id": 1\n  },\n  "action": "delete"\n}');
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -34,6 +36,11 @@ const PolicySimulator = ({ onSimulate }: PolicySimulatorProps) => {
           <Shield className="w-4 h-4 text-violet-400" />
           <h2 className="text-xs font-bold uppercase tracking-widest text-white">Policy Simulator</h2>
         </div>
+        {context?.selectedDefinition ? (
+          <span className="text-[10px] text-violet-300 font-mono">
+            {context.selectedDefinition.kind}:{context.selectedDefinition.id}
+          </span>
+        ) : null}
         <button 
           onClick={handleSimulate}
           disabled={loading}

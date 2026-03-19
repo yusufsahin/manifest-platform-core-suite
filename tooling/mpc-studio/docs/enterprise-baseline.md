@@ -59,6 +59,9 @@ This baseline anchors the "enterprise-ready" rollout for MPC Studio workflow sim
 - Feature flag: `VITE_WORKFLOW_TRACE_V2`
   - default: enabled (`true`)
   - emergency rollback: set to `false` to disable trace v2 details/snapshot controls
+- Router flag: `VITE_METADATA_DRIVEN_ROUTER`
+  - default: enabled unless explicitly set to `false`
+  - local QA override via query string: `?metadataDrivenRouter=legacy` (forces legacy static panel routing)
 - Canary recommendation:
   - enable in internal tenant first
   - then pilot tenant

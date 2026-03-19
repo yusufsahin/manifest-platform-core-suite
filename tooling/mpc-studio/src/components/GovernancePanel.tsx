@@ -1,4 +1,5 @@
 import { Activity, AlertTriangle, CheckCircle2, Shield } from 'lucide-react';
+import type { PanelAdapterContext } from '../types/panelAdapter';
 
 interface ValidationError {
   code: string;
@@ -11,9 +12,10 @@ interface GovernancePanelProps {
   astHash?: string;
   errors: ValidationError[];
   definitionCount: number;
+  context?: PanelAdapterContext;
 }
 
-const GovernancePanel = ({ namespace, astHash, errors, definitionCount }: GovernancePanelProps) => {
+const GovernancePanel = ({ namespace, astHash, errors, definitionCount, context }: GovernancePanelProps) => {
   const criticalCount = errors.filter((error) => error.severity === 'error' || error.severity === 'fatal').length;
   const warningCount = errors.filter((error) => error.severity === 'warning' || error.severity === 'warn').length;
   const isHealthy = criticalCount === 0;
@@ -23,6 +25,11 @@ const GovernancePanel = ({ namespace, astHash, errors, definitionCount }: Govern
       <div className="p-4 border-b border-white/5 flex items-center gap-2">
         <Activity className="w-4 h-4 text-amber-400" />
         <h2 className="text-xs font-bold uppercase tracking-widest text-white">Governance</h2>
+        {context?.selectedDefinition ? (
+          <span className="ml-auto text-[10px] text-amber-200/80 font-mono">
+            {context.selectedDefinition.kind}:{context.selectedDefinition.id}
+          </span>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-3 p-3 border-b border-white/5">

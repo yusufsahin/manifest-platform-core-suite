@@ -69,6 +69,7 @@ export interface WorkflowLimits {
 
 export interface WorkflowStepRequest {
   dsl: string;
+  workflowId?: string;
   artifactId?: string;
   useTenantActiveManifest?: boolean;
   event: string;
@@ -90,6 +91,7 @@ export interface WorkflowStepResponse {
 
 export interface WorkflowRunRequest {
   dsl: string;
+  workflowId?: string;
   artifactId?: string;
   useTenantActiveManifest?: boolean;
   events: Array<{ event: string; context?: Record<string, unknown> }>;
@@ -141,4 +143,10 @@ export interface WorkflowSnapshot {
     finalState: string;
   };
   session: WorkflowSession;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  kind: string;
 }

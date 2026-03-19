@@ -45,6 +45,34 @@ function remediationHintFor(errorCode: string): string {
   return hints[errorCode] ?? 'Inspect transition, guard, and actor context.';
 }
 
+const DEFINITION_CONTRACT_VERSION = '2.0.0';
+
+type EnvelopeDiagnostic = {
+  code: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+};
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function postEnvelope(id: string, type: string, requestId: string, payload: unknown, startedAt: number, diagnostics: EnvelopeDiagnostic[] = []) {
+  self.postMessage({
+    id,
+    type: 'RESULT',
+    payload: {
+      contractVersion: DEFINITION_CONTRACT_VERSION,
+      requestId,
+      timestamp: nowIso(),
+      type,
+      payload,
+      diagnostics,
+      durationMs: Date.now() - startedAt,
+    },
+  });
+}
+
 async function initPyodide() {
   if (pyodide) return pyodide;
   
@@ -179,6 +207,8 @@ self.onmessage = async (e) => {
   await waitForPrevious;
 
   const { type, payload, id } = e.data;
+  const startedAt = Date.now();
+  const requestId = typeof id === 'string' && id.length > 0 ? id : crypto.randomUUID();
   
   try {
     const py = await initPyodide();
@@ -276,22 +306,374 @@ json.dumps(run_pipeline(MPC_INPUT_DSL))
       }
 
       self.postMessage({ id, type: 'RESULT', payload: JSON.parse(result) });
+    } else if (type === 'LIST_DEFINITIONS') {
+      const payloadData = payload as { dsl: string };
+      py.globals.set('MPC_INPUT_DSL', payloadData.dsl);
+      try {
+        const raw = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+
+ast = parse(MPC_INPUT_DSL)
+items = []
+for idx, node in enumerate(ast.defs):
+    node_id = str(getattr(node, "id", "") or "").strip() or f"definition_{idx + 1}"
+    node_name = str(getattr(node, "name", "") or "").strip() or node_id
+    node_kind = str(getattr(node, "kind", "") or "").strip() or "Unknown"
+    node_version = "1.0.0"
+    props = getattr(node, "properties", None)
+    if isinstance(props, dict):
+        version = props.get("version")
+        if isinstance(version, str) and version.strip():
+            node_version = version.strip()
+    items.append({
+        "id": node_id,
+        "name": node_name,
+        "kind": node_kind,
+        "version": node_version
+    })
+
+json.dumps({"items": items})
+        `);
+        const parsed = JSON.parse(raw as string) as {
+          items: Array<{ id: string; name: string; kind: string; version: string }>;
+        };
+        const items = parsed.items.map((item) => {
+          const capabilities = (() => {
+            if (item.kind === 'Workflow') return ['preview_mermaid', 'simulate_workflow', 'diagnostics'];
+            if (item.kind === 'Policy') return ['preview_json', 'simulate_policy', 'diagnostics'];
+            if (item.kind === 'ACL' || item.kind === 'AccessControl') return ['preview_json', 'simulate_acl', 'diagnostics'];
+            if (item.kind === 'Overlay' || item.kind === 'OverlayRule' || item.kind === 'Projection' || item.kind === 'ViewOverlay') {
+              return ['preview_json', 'diagnostics'];
+            }
+            return ['preview_json', 'inspector', 'diagnostics'];
+          })();
+          const diagnostics: EnvelopeDiagnostic[] = item.kind === 'Workflow' || item.kind === 'Policy' || item.kind === 'ACL' || item.kind === 'AccessControl' || item.kind === 'Overlay' || item.kind === 'OverlayRule' || item.kind === 'Projection' || item.kind === 'ViewOverlay'
+            ? []
+            : [{ code: 'UNKNOWN_KIND_FALLBACK', message: `Kind '${item.kind}' is routed to generic inspector fallback.`, severity: 'warning' }];
+          return {
+            id: item.id,
+            name: item.name,
+            kind: item.kind,
+            version: item.version,
+            capabilities,
+            diagnostics,
+          };
+        });
+        postEnvelope(id, type, requestId, { items }, startedAt);
+      } finally {
+        safeDeleteGlobal(py, 'MPC_INPUT_DSL');
+      }
+    } else if (type === 'PREVIEW_DEFINITION') {
+      const payloadData = payload as { dsl: string; definitionId?: string; kindHint?: string };
+      py.globals.set('MPC_INPUT_DSL', payloadData.dsl);
+      py.globals.set('MPC_DEFINITION_ID', payloadData.definitionId ?? null);
+      py.globals.set('MPC_KIND_HINT', payloadData.kindHint ?? null);
+      try {
+        const raw = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.features.workflow import WorkflowEngine
+
+ast = parse(MPC_INPUT_DSL)
+
+def _pick_node(ast_obj, definition_id=None, kind_hint=None):
+    target = str(definition_id).strip().lower() if definition_id else ""
+    hint = str(kind_hint).strip().lower() if kind_hint else ""
+    for node in ast_obj.defs:
+        node_id = str(getattr(node, "id", "") or "").strip()
+        node_name = str(getattr(node, "name", "") or "").strip()
+        node_kind = str(getattr(node, "kind", "") or "").strip()
+        if target and node_id.lower() != target and node_name.lower() != target:
+            continue
+        if hint and node_kind.lower() != hint:
+            continue
+        return node
+    for node in ast_obj.defs:
+        node_kind = str(getattr(node, "kind", "") or "").strip()
+        if hint and node_kind.lower() == hint:
+            return node
+    return ast_obj.defs[0] if ast_obj.defs else None
+
+node = _pick_node(ast, MPC_DEFINITION_ID, MPC_KIND_HINT)
+if node is None:
+    result_json = json.dumps({
+        "kind": "Unknown",
+        "definitionId": str(MPC_DEFINITION_ID or ""),
+        "renderer": "text",
+        "content": "No definitions found in manifest.",
+        "diagnostics": [{"code": "NO_DEFINITION_FOUND", "message": "No definitions found in manifest.", "severity": "warning"}]
+    })
+else:
+    node_kind = str(getattr(node, "kind", "") or "").strip() or "Unknown"
+    node_id = str(getattr(node, "id", "") or "").strip()
+    if node_kind == "Workflow":
+        try:
+            engine = WorkflowEngine.from_ast_node(node)
+            mermaid = engine.to_mermaid() if engine else ""
+            result_json = json.dumps({
+                "kind": node_kind,
+                "definitionId": node_id,
+                "renderer": "mermaid",
+                "content": mermaid,
+                "diagnostics": []
+            })
+        except Exception as error:
+            result_json = json.dumps({
+                "kind": node_kind,
+                "definitionId": node_id,
+                "renderer": "text",
+                "content": str(error),
+                "diagnostics": [{"code": "WORKFLOW_PREVIEW_FAILED", "message": str(error), "severity": "error"}]
+            })
+    else:
+        props = getattr(node, "properties", None)
+        result_json = json.dumps({
+            "kind": node_kind,
+            "definitionId": node_id,
+            "renderer": "json",
+            "content": json.dumps(props if props is not None else {}, indent=2),
+            "diagnostics": []
+        })
+result_json
+        `);
+        postEnvelope(id, type, requestId, JSON.parse(raw as string), startedAt);
+      } finally {
+        safeDeleteGlobal(py, 'MPC_INPUT_DSL');
+        safeDeleteGlobal(py, 'MPC_DEFINITION_ID');
+        safeDeleteGlobal(py, 'MPC_KIND_HINT');
+      }
+    } else if (type === 'SIMULATE_DEFINITION') {
+      const payloadData = payload as { dsl: string; definitionId?: string; kindHint?: string; input?: unknown };
+      const input = payloadData.input ?? {};
+      const normalizedKind = String(payloadData.kindHint ?? '').trim();
+      if (normalizedKind === 'ACL' || normalizedKind === 'AccessControl') {
+        const role = String((input as { role?: string }).role ?? '').toLowerCase().trim();
+        const action = String((input as { action?: string }).action ?? '').toLowerCase().trim();
+        const privilegedRoles = new Set(['admin', 'owner', 'security_admin']);
+        const readonlyActions = new Set(['read', 'list', 'view', 'inspect']);
+        const allowed = privilegedRoles.has(role) || readonlyActions.has(action);
+        postEnvelope(
+          id,
+          type,
+          requestId,
+          {
+            kind: normalizedKind || 'ACL',
+            definitionId: payloadData.definitionId,
+            status: 'success',
+            output: { allowed, reason: allowed ? 'Allowed by default ACL policy.' : 'Denied by default ACL policy.' },
+            diagnostics: [],
+          },
+          startedAt,
+        );
+      } else if (normalizedKind === 'Policy') {
+        py.globals.set('DSL', payloadData.dsl);
+        py.globals.set('EVENT', JSON.stringify(input));
+        try {
+          const result = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.features.policy import PolicyEngine
+from mpc.kernel.meta.models import DomainMeta, KindDef
+
+ast = parse(DSL)
+meta = DomainMeta(kinds=[KindDef(name="Policy")])
+engine = PolicyEngine(ast=ast, meta=meta)
+res = engine.evaluate(json.loads(EVENT))
+
+json.dumps({
+    "allow": res.allow,
+    "reasons": [{"code": r.code, "summary": r.summary} for r in res.reasons],
+    "intents": [{"kind": i.kind, "target": i.target} for i in res.intents]
+})
+          `);
+          postEnvelope(
+            id,
+            type,
+            requestId,
+            {
+              kind: 'Policy',
+              definitionId: payloadData.definitionId,
+              status: 'success',
+              output: JSON.parse(result as string),
+              diagnostics: [],
+            },
+            startedAt,
+          );
+        } finally {
+          safeDeleteGlobal(py, 'DSL');
+          safeDeleteGlobal(py, 'EVENT');
+        }
+      } else if (normalizedKind === 'Workflow') {
+        const event = String((input as { event?: string }).event ?? 'begin');
+        const context = (input as { context?: unknown }).context ?? {};
+        const actorId = String((input as { actorId?: string }).actorId ?? 'operator-1');
+        const actorRoles = Array.isArray((input as { actorRoles?: unknown[] }).actorRoles)
+          ? ((input as { actorRoles?: unknown[] }).actorRoles ?? []).map((role) => String(role))
+          : ['operator'];
+        py.globals.set('WF_DSL', payloadData.dsl);
+        py.globals.set('WF_EVENT', event);
+        py.globals.set('WF_CONTEXT', JSON.stringify(context));
+        py.globals.set('WF_CURRENT', null);
+        py.globals.set('WF_INITIAL', null);
+        py.globals.set('WF_ACTOR_ID', actorId);
+        py.globals.set('WF_ACTOR_ROLES', JSON.stringify(actorRoles));
+        py.globals.set('WF_WORKFLOW_ID', payloadData.definitionId ?? null);
+        try {
+          const raw = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.features.workflow import WorkflowEngine
+ast = parse(WF_DSL)
+def _pick_workflow_engine(ast_obj, workflow_id=None):
+    target = str(workflow_id).strip() if workflow_id else ""
+    if target:
+        target_lower = target.lower()
+        for node in ast_obj.defs:
+            node_id = str(getattr(node, "id", "") or "").strip()
+            node_name = str(getattr(node, "name", "") or "").strip()
+            if node_id.lower() != target_lower and node_name.lower() != target_lower:
+                continue
+            try:
+                engine = WorkflowEngine.from_ast_node(node)
+                if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                    return engine
+            except Exception:
+                continue
+    for node in ast_obj.defs:
+        try:
+            engine = WorkflowEngine.from_ast_node(node)
+            if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                return engine
+        except Exception:
+            continue
+    return None
+engine = _pick_workflow_engine(ast, WF_WORKFLOW_ID)
+if engine is None:
+    result_json = json.dumps({"allow": False, "errorCode": "NO_WORKFLOW_DEF", "message": "No Workflow definition found in manifest."})
+else:
+    result = engine.fire(WF_EVENT, actor_roles=json.loads(WF_ACTOR_ROLES), actor_id=WF_ACTOR_ID, context=json.loads(WF_CONTEXT))
+    wf_errors = [{"code": e.code, "message": e.message} for e in result.errors]
+    result_json = json.dumps({
+      "allow": bool(result.decision.allow),
+      "newState": result.new_state,
+      "errors": wf_errors,
+      "trace": result.trace
+    })
+result_json
+          `);
+          const parsed = JSON.parse(raw as string);
+          const diagnostics: EnvelopeDiagnostic[] = parsed.errorCode
+            ? [{ code: parsed.errorCode, message: parsed.message ?? parsed.errorCode, severity: 'error' }]
+            : [];
+          postEnvelope(
+            id,
+            type,
+            requestId,
+            {
+              kind: 'Workflow',
+              definitionId: payloadData.definitionId,
+              status: diagnostics.length > 0 ? 'error' : 'success',
+              output: parsed,
+              diagnostics,
+            },
+            startedAt,
+            diagnostics,
+          );
+        } finally {
+          safeDeleteGlobal(py, 'WF_DSL');
+          safeDeleteGlobal(py, 'WF_EVENT');
+          safeDeleteGlobal(py, 'WF_CONTEXT');
+          safeDeleteGlobal(py, 'WF_CURRENT');
+          safeDeleteGlobal(py, 'WF_INITIAL');
+          safeDeleteGlobal(py, 'WF_ACTOR_ID');
+          safeDeleteGlobal(py, 'WF_ACTOR_ROLES');
+          safeDeleteGlobal(py, 'WF_WORKFLOW_ID');
+        }
+      } else {
+        postEnvelope(
+          id,
+          type,
+          requestId,
+          {
+            kind: normalizedKind || 'Unknown',
+            definitionId: payloadData.definitionId,
+            status: 'error',
+            output: null,
+            diagnostics: [{ code: 'SIMULATOR_UNSUPPORTED_KIND', message: 'No simulator adapter for selected kind.', severity: 'warning' }],
+          },
+          startedAt,
+          [{ code: 'SIMULATOR_UNSUPPORTED_KIND', message: 'No simulator adapter for selected kind.', severity: 'warning' }],
+        );
+      }
     } else if (type === 'MERMAID_EXPORT') {
-      const dsl = payload;
-      py.globals.set('MPC_INPUT_DSL', dsl);
+      const payloadData =
+        typeof payload === 'string' ? { dsl: payload, workflowId: null } : (payload as { dsl: string; workflowId?: string | null });
+      py.globals.set('MPC_INPUT_DSL', payloadData.dsl);
+      py.globals.set('MPC_WORKFLOW_ID', payloadData.workflowId ?? null);
       try {
         const mermaid = await py.runPythonAsync(`
 from mpc.kernel.parser import parse
 from mpc.features.workflow import WorkflowEngine
 ast = parse(MPC_INPUT_DSL)
-wf_node = next((n for n in ast.defs if n.kind == "Workflow"), None)
-if wf_node:
-    engine = WorkflowEngine.from_ast_node(wf_node)
-    engine.to_mermaid()
-else:
-    ""
+def _pick_workflow_engine(ast_obj, workflow_id=None):
+    target = str(workflow_id).strip() if workflow_id else ""
+    if target:
+        target_lower = target.lower()
+        for node in ast_obj.defs:
+            node_id = str(getattr(node, "id", "") or "").strip()
+            node_name = str(getattr(node, "name", "") or "").strip()
+            if node_id.lower() != target_lower and node_name.lower() != target_lower:
+                continue
+            try:
+                engine = WorkflowEngine.from_ast_node(node)
+                if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                    return engine
+            except Exception:
+                continue
+    for node in ast_obj.defs:
+        try:
+            engine = WorkflowEngine.from_ast_node(node)
+            if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                return engine
+        except Exception:
+            continue
+    return None
+
+engine = _pick_workflow_engine(ast, MPC_WORKFLOW_ID)
+engine.to_mermaid() if engine else ""
 `);
         self.postMessage({ id, type: 'MERMAID_RESULT', payload: mermaid });
+      } finally {
+        safeDeleteGlobal(py, 'MPC_INPUT_DSL');
+        safeDeleteGlobal(py, 'MPC_WORKFLOW_ID');
+      }
+    } else if (type === 'LIST_WORKFLOWS') {
+      const payloadData = payload as { dsl: string };
+      py.globals.set('MPC_INPUT_DSL', payloadData.dsl);
+      try {
+        const workflows = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.features.workflow import WorkflowEngine
+
+ast = parse(MPC_INPUT_DSL)
+items = []
+for idx, node in enumerate(ast.defs):
+    try:
+        engine = WorkflowEngine.from_ast_node(node)
+        if not getattr(engine, "states", None) or not getattr(engine, "transitions", None):
+            continue
+    except Exception:
+        continue
+    node_id = str(getattr(node, "id", "") or "").strip() or f"workflow_{idx + 1}"
+    node_name = str(getattr(node, "name", "") or "").strip() or node_id
+    node_kind = str(getattr(node, "kind", "") or "").strip() or "Workflow"
+    items.append({"id": node_id, "name": node_name, "kind": node_kind})
+
+json.dumps({"items": items})
+        `);
+        self.postMessage({ id, type: 'RESULT', payload: JSON.parse(workflows) });
       } finally {
         safeDeleteGlobal(py, 'MPC_INPUT_DSL');
       }
@@ -399,6 +781,7 @@ json.dumps({
     } else if (type === 'WORKFLOW_STEP') {
       const {
         dsl,
+        workflowId,
         event,
         context,
         currentState,
@@ -408,6 +791,7 @@ json.dumps({
         limits,
       } = payload as {
         dsl: string;
+        workflowId?: string;
         event: string;
         context?: Record<string, unknown>;
         currentState?: string;
@@ -480,6 +864,7 @@ json.dumps({
       py.globals.set('WF_INITIAL', initialState ?? null);
       py.globals.set('WF_ACTOR_ID', actorId ?? '');
       py.globals.set('WF_ACTOR_ROLES', JSON.stringify(actorRoles || []));
+      py.globals.set('WF_WORKFLOW_ID', workflowId ?? null);
 
       try {
         let parsed:
@@ -509,8 +894,32 @@ from mpc.kernel.parser import parse
 from mpc.features.workflow import WorkflowEngine
 
 ast = parse(WF_DSL)
-wf_node = next((n for n in ast.defs if n.kind == "Workflow"), None)
-if wf_node is None:
+def _pick_workflow_engine(ast_obj, workflow_id=None):
+    target = str(workflow_id).strip() if workflow_id else ""
+    if target:
+        target_lower = target.lower()
+        for node in ast_obj.defs:
+            node_id = str(getattr(node, "id", "") or "").strip()
+            node_name = str(getattr(node, "name", "") or "").strip()
+            if node_id.lower() != target_lower and node_name.lower() != target_lower:
+                continue
+            try:
+                engine = WorkflowEngine.from_ast_node(node)
+                if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                    return engine
+            except Exception:
+                continue
+    for node in ast_obj.defs:
+        try:
+            engine = WorkflowEngine.from_ast_node(node)
+            if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                return engine
+        except Exception:
+            continue
+    return None
+
+engine = _pick_workflow_engine(ast, WF_WORKFLOW_ID)
+if engine is None:
     json.dumps({
         "initialState": "",
         "currentState": "",
@@ -529,7 +938,6 @@ if wf_node is None:
         "availableTransitions": []
     })
 else:
-    engine = WorkflowEngine.from_ast_node(wf_node)
     initial = WF_INITIAL or engine.initial_state
     if WF_CURRENT:
         engine.restore_state({"current_state": WF_CURRENT, "is_active": True})
@@ -610,10 +1018,12 @@ else:
         safeDeleteGlobal(py, 'WF_INITIAL');
         safeDeleteGlobal(py, 'WF_ACTOR_ID');
         safeDeleteGlobal(py, 'WF_ACTOR_ROLES');
+        safeDeleteGlobal(py, 'WF_WORKFLOW_ID');
       }
     } else if (type === 'WORKFLOW_RUN') {
       const {
         dsl,
+        workflowId,
         events,
         initialState,
         actorId,
@@ -621,6 +1031,7 @@ else:
         limits,
       } = payload as {
         dsl: string;
+        workflowId?: string;
         events: Array<{ event: string; context?: Record<string, unknown> }>;
         initialState?: string;
         actorId: string;
@@ -708,6 +1119,7 @@ else:
           py.globals.set('WF_INITIAL', discoveredInitial || null);
           py.globals.set('WF_ACTOR_ID', actorId ?? '');
           py.globals.set('WF_ACTOR_ROLES', JSON.stringify(actorRoles || []));
+          py.globals.set('WF_WORKFLOW_ID', workflowId ?? null);
           try {
             try {
               const result = await py.runPythonAsync(`
@@ -715,11 +1127,34 @@ import json
 from mpc.kernel.parser import parse
 from mpc.features.workflow import WorkflowEngine
 ast = parse(WF_DSL)
-wf_node = next((n for n in ast.defs if n.kind == "Workflow"), None)
-if wf_node is None:
+def _pick_workflow_engine(ast_obj, workflow_id=None):
+    target = str(workflow_id).strip() if workflow_id else ""
+    if target:
+        target_lower = target.lower()
+        for node in ast_obj.defs:
+            node_id = str(getattr(node, "id", "") or "").strip()
+            node_name = str(getattr(node, "name", "") or "").strip()
+            if node_id.lower() != target_lower and node_name.lower() != target_lower:
+                continue
+            try:
+                engine = WorkflowEngine.from_ast_node(node)
+                if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                    return engine
+            except Exception:
+                continue
+    for node in ast_obj.defs:
+        try:
+            engine = WorkflowEngine.from_ast_node(node)
+            if getattr(engine, "states", None) and getattr(engine, "transitions", None):
+                return engine
+        except Exception:
+            continue
+    return None
+
+engine = _pick_workflow_engine(ast, WF_WORKFLOW_ID)
+if engine is None:
     json.dumps({"initialState": "", "currentState": "", "step": {"stepId": "wf-step-missing", "event": WF_EVENT, "from": "", "to": "", "allow": False, "guardResult": "not_applicable", "reasons": [{"code": "NO_WORKFLOW_DEF", "summary": "No Workflow definition found in manifest."}], "errors": [{"code": "NO_WORKFLOW_DEF", "message": "No Workflow definition found in manifest."}], "actionsExecuted": [], "errorCode": "NO_WORKFLOW_DEF"}, "availableTransitions": []})
 else:
-    engine = WorkflowEngine.from_ast_node(wf_node)
     initial = WF_INITIAL or engine.initial_state
     if WF_CURRENT:
         engine.restore_state({"current_state": WF_CURRENT, "is_active": True})
@@ -768,6 +1203,7 @@ else:
             safeDeleteGlobal(py, 'WF_INITIAL');
             safeDeleteGlobal(py, 'WF_ACTOR_ID');
             safeDeleteGlobal(py, 'WF_ACTOR_ROLES');
+            safeDeleteGlobal(py, 'WF_WORKFLOW_ID');
           }
         })();
 

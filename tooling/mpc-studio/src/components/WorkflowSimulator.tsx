@@ -6,6 +6,7 @@ import { createWorkflowSnapshot, restoreWorkflowSnapshot } from '../services/wor
 
 interface WorkflowSimulatorProps {
   dsl: string;
+  workflowId?: string;
   defaultTenantId?: string;
   useTenantActiveManifest?: boolean;
 }
@@ -32,7 +33,12 @@ const defaultEventQueue = JSON.stringify(
   2,
 );
 
-const WorkflowSimulator = ({ dsl, defaultTenantId = 'tenant-default', useTenantActiveManifest = false }: WorkflowSimulatorProps) => {
+const WorkflowSimulator = ({
+  dsl,
+  workflowId,
+  defaultTenantId = 'tenant-default',
+  useTenantActiveManifest = false,
+}: WorkflowSimulatorProps) => {
   const traceUiV2Enabled = import.meta.env.VITE_WORKFLOW_TRACE_V2 !== 'false';
   const [tenantId, setTenantId] = useState(defaultTenantId);
   const [actorId, setActorId] = useState('operator-1');
@@ -113,6 +119,7 @@ const WorkflowSimulator = ({ dsl, defaultTenantId = 'tenant-default', useTenantA
       const parsedContext = safeParse<Record<string, unknown>>(eventContextJson, {});
       const response = await mpcEngine.workflowStep({
         dsl,
+        workflowId,
         useTenantActiveManifest,
         event: eventName,
         context: parsedContext,
@@ -153,6 +160,7 @@ const WorkflowSimulator = ({ dsl, defaultTenantId = 'tenant-default', useTenantA
       const queue = safeParse<Array<{ event: string; context?: Record<string, unknown> }>>(eventQueueJson, []);
       const response = await mpcEngine.workflowRun({
         dsl,
+        workflowId,
         useTenantActiveManifest,
         events: queue,
         initialState: session.initialState || undefined,

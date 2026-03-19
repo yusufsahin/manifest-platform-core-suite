@@ -1,0 +1,29 @@
+{
+  "contractVersion": "2.0.0",
+  "requestId": "req-simulate-definition",
+  "timestamp": "2026-03-19T14:22:20.000Z",
+  "type": "SIMULATE_DEFINITION",
+  "payload": {
+    "kind": "Policy",
+    "definitionId": "riskPolicy",
+    "status": "success",
+    "output": {
+      "allow": false,
+      "reasons": [
+        {
+          "code": "P_DENY_HIGH_RISK",
+          "summary": "Risk score exceeds threshold."
+        }
+      ],
+      "intents": [
+        {
+          "kind": "AuditEvent",
+          "target": "risk-decisions"
+        }
+      ]
+    },
+    "diagnostics": []
+  },
+  "diagnostics": [],
+  "durationMs": 15
+}
