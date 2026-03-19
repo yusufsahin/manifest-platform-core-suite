@@ -79,9 +79,9 @@ test.describe('MPC Studio — Gate C smoke', () => {
     // The Sidebar renders the ast_hash; while loading it shows "pending…"
     await expect(page.getByText('pending...', { exact: true })).toBeHidden({ timeout: 20_000 });
 
-    // The hash should now be a non-empty string (shown in the Registry Artifact panel)
-    const hashEl = page.locator('p.font-mono.text-violet-400\\/80');
-    await expect(hashEl).not.toHaveText('pending...');
+    // The hash should now be a non-empty hex string in the Registry Artifact panel.
+    const hashEl = page.getByText(/^[a-f0-9]{16,}$/i).first();
+    await expect(hashEl).toBeVisible();
     const hashText = await hashEl.textContent();
     expect(hashText?.trim().length).toBeGreaterThan(6);
   });
@@ -181,7 +181,7 @@ test.describe('MPC Studio — Gate C smoke', () => {
     const navItems = [
       'Manifest Editor',
       'Domain Registry',
-      'Security Policies',
+      'Policy Simulator',
       'Workflow Engine',
       'Overlay System',
     ];

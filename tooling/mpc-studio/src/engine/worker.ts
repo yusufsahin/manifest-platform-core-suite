@@ -246,8 +246,8 @@ def run_pipeline(dsl_text):
                     "severity": e.severity,
                     "line": e.source.line if e.source else None,
                     "col": e.source.col if e.source else None,
-                    "end_line": e.source.line2 if e.source else None,
-                    "end_col": e.source.col2 if e.source else None,
+                    "end_line": e.source.span.line2 if e.source and getattr(e.source, "span", None) else None,
+                    "end_col": e.source.span.col2 if e.source and getattr(e.source, "span", None) else None,
                 }
                 for e in all_errors
             ]
@@ -256,11 +256,12 @@ def run_pipeline(dsl_text):
         # Check if e has source info (MPCError)
         err_data = {"code": getattr(e, "code", "E_PARSE_SYNTAX"), "message": str(e), "severity": "error"}
         if hasattr(e, "source") and e.source:
+             source_span = getattr(e.source, "span", None)
              err_data.update({
                 "line": e.source.line,
                 "col": e.source.col,
-                "end_line": getattr(e.source, "line2", e.source.line),
-                "end_col": getattr(e.source, "col2", e.source.col)
+                "end_line": getattr(source_span, "line2", e.source.line),
+                "end_col": getattr(source_span, "col2", e.source.col)
              })
         return {
             "status": "error",

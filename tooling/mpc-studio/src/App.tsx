@@ -41,6 +41,7 @@ const DEFAULT_DSL = `@schema 1
 def Workflow onboarding "Onboarding" {
     initial: "START"
     states: ["START", "QUALIFYING", "DONE"]
+    final_states: ["DONE"]
     transitions: [
         {"from": "START", "on": "begin", "to": "QUALIFYING"},
         {"from": "QUALIFYING", "on": "finish", "to": "DONE"}
