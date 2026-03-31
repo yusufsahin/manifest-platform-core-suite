@@ -8,7 +8,9 @@ def test_kms_signing_placeholder():
     assert signer.algorithm() == "aws-kms-rsassa-pss-sha-256"
     
     verifier = KMSVerificationPort(key_id="key-123", provider="aws")
-    assert verifier.verify(b"hello", sig) is True
+    import pytest
+    with pytest.raises(NotImplementedError):
+        verifier.verify(b"hello", sig)
 
 if __name__ == "__main__":
     test_kms_signing_placeholder()

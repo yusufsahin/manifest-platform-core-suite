@@ -54,16 +54,17 @@ class PolicyEngine:
                 continue
 
             effect = pdef.properties.get("effect", "allow")
+            label = pdef.name or pdef.id
             if effect == "deny":
                 allow = False
                 reasons.append(Reason(
                     code="R_POLICY_DENY",
-                    summary=f"Denied by policy '{pdef.id}'",
+                    summary=f"Denied by policy '{label}'",
                 ))
             else:
                 reasons.append(Reason(
                     code="R_POLICY_ALLOW",
-                    summary=f"Allowed by policy '{pdef.id}'",
+                    summary=f"Allowed by policy '{label}'",
                 ))
 
             intent_defs = pdef.properties.get("intents", [])

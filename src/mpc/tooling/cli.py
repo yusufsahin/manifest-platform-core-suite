@@ -7,7 +7,6 @@ from mpc.tooling.validator.structural import validate_structural
 from mpc.tooling.validator.semantic import validate_semantic
 from mpc.kernel.meta.diff import detect_drift
 from mpc.kernel.meta.models import DomainMeta, KindDef
-from mpc.kernel.meta.models import DomainMeta, KindDef
 from mpc.features.workflow import WorkflowEngine
 
 def main():
@@ -86,6 +85,24 @@ def main():
         parser.print_help()
         sys.exit(0)
 
+    # Commands that do not need a file argument are handled first.
+    if args.command == "repl":
+        _run_repl()
+        sys.exit(0)
+    elif args.command == "status":
+        _run_status(args)
+        sys.exit(0)
+    elif args.command in ("rollout", "approve"):
+        try:
+            if args.command == "rollout":
+                _run_rollout(args)
+            else:
+                _run_approve(args)
+        except Exception as e:
+            print(f"Unexpected error: {e}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+
     try:
         path = Path(args.file)
         if not path.exists():
@@ -93,11 +110,8 @@ def main():
             sys.exit(1)
 
         text = path.read_text(encoding="utf-8")
-        
-        # Determine parser based on extension
-        ext = path.suffix.lower()
-        ast = parse(text) # parse() handles DSL/YAML/JSON internally in some versions, 
-                         # but here we assume canonical parser for now
+
+        ast = parse(text)
 
         if args.command == "validate":
             # For CLI validation, we use a generic meta or allow all kinds
@@ -148,9 +162,6 @@ def main():
             elif args.format == "ast":
                 print(ast)
 
-        elif args.command == "repl":
-            _run_repl()
-
         elif args.command == "redact":
             _run_redact(args)
 
@@ -171,12 +182,6 @@ def main():
 
         elif args.command == "activate":
             _run_activate(args)
-
-        elif args.command == "rollout":
-            _run_rollout(args)
-
-        elif args.command == "approve":
-            _run_approve(args)
 
         elif args.command == "acl-check":
             _run_acl_check(args)
@@ -282,7 +287,8 @@ def _run_resolve_imports(args):
                     with open(path, "r", encoding="utf-8") as f_obj:
                         name = os.path.splitext(f)[0]
                         resolver.register(name, parse(f_obj.read()))
-                except: pass
+                except Exception:
+                    pass
 
     _reg_dir(os.path.dirname(os.path.abspath(args.file)))
 
@@ -321,7 +327,7 @@ def _run_sbom(args):
     sbom = {
         "manifest": {
             "name": ast.name,
-            "version": ast.version,
+            "version": ast.manifest_version,
             "namespace": ast.namespace
         },
         "statistics": {
@@ -358,7 +364,7 @@ def _run_bundle(args):
         "signature": signature,
         "manifest": {
             "name": ast.name,
-            "version": ast.version,
+            "version": ast.manifest_version,
             "namespace": ast.namespace,
             "defs": len(res.ast.defs)
         },

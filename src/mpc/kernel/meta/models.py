@@ -25,6 +25,7 @@ class FunctionDef:
 class KindDef:
     name: str
     required_props: list[str] = field(default_factory=list)
+    optional_props: list[str] = field(default_factory=list)
     allowed_types: list[str] = field(default_factory=list)
 
 

@@ -196,6 +196,10 @@ def _check_dead_ends_and_reachability(ast: ManifestAST, errors: list[Error]) -> 
         
         if not isinstance(states, list) or not isinstance(transitions, list):
             continue
+
+        # Only enforce dead-end/orphan checks when explicit finals are declared.
+        if not finals:
+            continue
             
         # Build adjacency
         out_edges: dict[str, list[str]] = {s: [] for s in states}

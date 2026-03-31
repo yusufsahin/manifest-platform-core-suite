@@ -26,5 +26,5 @@ class ManifestAST:
     schema_version: int
     namespace: str
     name: str
-    manifest_version: str
+    manifest_version: str = "0.0.0"
     defs: list[ASTNode] = field(default_factory=list)

@@ -5,6 +5,7 @@ Defines ports for state storage and provides default adapters.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
+import ast
 import json
 import time
 
@@ -82,7 +83,17 @@ class RedisStateStore:
         data = self.client.get(key)
         if not data:
             return None
-        return json.loads(data)
+        if isinstance(data, bytes):
+            data = data.decode("utf-8")
+        try:
+            return json.loads(data)
+        except (TypeError, json.JSONDecodeError):
+            # Backward compatibility for python-literal style payloads.
+            try:
+                parsed = ast.literal_eval(str(data))
+            except (ValueError, SyntaxError):
+                raise
+            return parsed if isinstance(parsed, dict) else None
 
     def record_audit(self, instance_id: str, record_data: dict[str, Any]) -> None:
         key = f"{self.prefix}audit:{instance_id}"

@@ -37,5 +37,7 @@ class KMSVerificationPort:
     provider: str # 'aws', 'gcp', 'azure'
 
     def verify(self, data: bytes, signature: str) -> bool:
-        # Simulated verification logic
-        return True # Placeholder
+        raise NotImplementedError(
+            f"KMSVerificationPort ({self.provider!r}) requires a real KMS integration. "
+            "Implement this method using the appropriate SDK (boto3, google-cloud-kms, etc.)."
+        )

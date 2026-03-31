@@ -9,6 +9,7 @@ Per MASTER_SPEC section 12:
 """
 from __future__ import annotations
 
+import asyncio
 import time
 import json
 from dataclasses import dataclass, field
@@ -141,8 +142,12 @@ class WorkflowEngine:
     _event_queue: list[dict[str, Any]] = field(default_factory=list, init=False)
     _is_firing: bool = field(default=False, init=False)
     is_active: bool = field(default=False, init=False)
-    state_entry_time: float = field(default_factory=lambda: 0.0, init=False)
+    state_entry_time: float = field(default_factory=time.time, init=False)
     _history: dict[str, set[str]] = field(default_factory=dict, init=False)
+
+    def __post_init__(self) -> None:
+        if not self.active_states and self.initial_state:
+            self._set_initial_active_states()
 
     @property
     def current_state(self) -> str:
@@ -530,11 +535,7 @@ class WorkflowEngine:
         # 2. Filter by Auth and Guards
         final_executions = []
         for source, tr in active_transitions.items():
-            if (
-                actor_roles is not None
-                and tr.auth_roles
-                and not role_set.intersection(tr.auth_roles)
-            ):
+            if tr.auth_roles and not role_set.intersection(tr.auth_roles):
                 errors.append(
                     Error(
                         code="E_WF_AUTH_DENIED",
@@ -685,12 +686,6 @@ class WorkflowEngine:
                     for a in st.on_enter: _exec(a)
                 new_states.add(s)
             
-            # Handle history nodes if dest is a history target
-            if dest in self.states and self.states[dest].name.endswith("_history"):
-                # This is a bit of a placeholder for explicit history nodes, 
-                # but we'll focus on the 'most recent state' restoration.
-                pass
-
             self._restore_history_or_initials(dest, new_states)
 
         self.active_states = new_states
@@ -768,8 +763,9 @@ class WorkflowEngine:
         ))
 
     async def fire_async(self, event: str, **kwargs) -> FireResult:
-        """Async version of fire()."""
-        return self.fire(event, **kwargs)
+        """Async version of fire() — runs synchronous fire() in a thread pool."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self.fire(event, **kwargs))
 
     def check_timeouts(self, context: dict[str, Any]|None=None) -> FireResult|None:
         """Check if any transitions from active states have timed out."""

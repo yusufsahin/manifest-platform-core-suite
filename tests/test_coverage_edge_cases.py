@@ -83,8 +83,6 @@ class TestExprEdgeCases:
         [
             ("-", 10, "abc", 10),
             ("*", 10, "abc", 0),
-            ("/", 10, "abc", None),
-            ("%", 10, "abc", None),
             ("==", 10, "10", False),
             ("!=", 10, "10", True),
             ("and", 10, "abc", True),
@@ -98,6 +96,16 @@ class TestExprEdgeCases:
             _meta(),
         )
         assert result.value == expected
+
+    @pytest.mark.parametrize("op", ["/", "%"])
+    def test_div_by_zero_string_operand_raises(self, op):
+        from mpc.kernel.errors.exceptions import MPCError
+        with pytest.raises(MPCError) as exc_info:
+            evaluate(
+                {"op": op, "left": {"lit": 10}, "right": {"lit": "abc"}},
+                _meta(),
+            )
+        assert "E_EXPR_DIV_BY_ZERO" in str(exc_info.value)
 
     @pytest.mark.parametrize("op", ["<", ">", "<=", ">="])
     def test_binop_type_mismatch_ordering_raises(self, op):

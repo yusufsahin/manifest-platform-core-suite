@@ -1,7 +1,7 @@
 {
   "error": {
     "code": "E_OVERLAY_CONFLICT",
-    "message": "Conflicting overlays on path 'attributes.effect': two replace ops produce different values",
+    "message": "Conflicting overlays on path 'attributes.effect': more than one replace op targets the same path",
     "severity": "error"
   }
 }

@@ -134,7 +134,7 @@ class OverlayEngine:
                                 code="E_OVERLAY_CONFLICT",
                                 message=(
                                     f"Conflicting overlays on path '{path}': "
-                                    "two replace ops produce different values"
+                                    "more than one replace op targets the same path"
                                 ),
                                 severity="error",
                                 source=overlay_def.source,

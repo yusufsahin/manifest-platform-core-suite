@@ -38,6 +38,6 @@ def Customer main "Main" {
     assert "name" in schema["required"]
 
 def test_ui_schema_empty():
-    ast = parse("@schema 1\\n@namespace \\"test\\"")
+    ast = parse('@schema 1\n@namespace "test"')
     res = generate_ui_schema(ast, DomainMeta(kinds=[]))
     assert len(res.schemas) == 0

@@ -42,22 +42,35 @@ class BytecodeCompiler:
             
         elif isinstance(node, ExprBinOp):
             if node.op == "and":
+                # Short-circuit: if left is false, keep it and skip right.
+                # If left is true, pop it and evaluate right.
                 self._compile_node(node.left)
                 jump_idx = len(self.instructions)
-                self.instructions.append((OpCode.JUMP_IF_FALSE, 0)) # placeholder
+                self.instructions.append((OpCode.JUMP_IF_FALSE, 0))  # placeholder
                 self.instructions.append((OpCode.POP, None))
                 self._compile_node(node.right)
                 self.instructions[jump_idx] = (OpCode.JUMP_IF_FALSE, len(self.instructions))
             elif node.op == "or":
+                # Short-circuit: if left is truthy, skip right and return left's value.
+                # Pattern:
+                #   <left>
+                #   JUMP_IF_FALSE  -> right_label   (left is false: pop and eval right)
+                #   JUMP           -> end_label      (left is true: keep it on stack)
+                # right_label:
+                #   POP                              (discard false left)
+                #   <right>
+                # end_label:
                 self._compile_node(node.left)
-                jump_idx = len(self.instructions)
-                # JUMP_IF_TRUE would be better, but we can simulate with JUMP_IF_FALSE and JUMP
-                self.instructions.append((OpCode.JUMP_IF_FALSE, 0)) # placeholder
-                self.instructions.append((OpCode.JUMP, 0)) # placeholder for true path
-                self.instructions[jump_idx] = (OpCode.JUMP_IF_FALSE, len(self.instructions))
-                # or is slightly more complex without JUMP_IF_TRUE, let's keep it simple for now or implement JUMP_IF_TRUE
-                # For brevity in this phase, we'll use a simpler binary op for and/or or add JUMP_IF_TRUE
-                self.instructions.append((OpCode.BINARY_OP, node.op))
+                false_jump_idx = len(self.instructions)
+                self.instructions.append((OpCode.JUMP_IF_FALSE, 0))  # placeholder
+                end_jump_idx = len(self.instructions)
+                self.instructions.append((OpCode.JUMP, 0))           # placeholder
+                # right_label: left was false, pop it and evaluate right
+                self.instructions[false_jump_idx] = (OpCode.JUMP_IF_FALSE, len(self.instructions))
+                self.instructions.append((OpCode.POP, None))
+                self._compile_node(node.right)
+                # end_label: left was true, its value is already on the stack
+                self.instructions[end_jump_idx] = (OpCode.JUMP, len(self.instructions))
             else:
                 self._compile_node(node.left)
                 self._compile_node(node.right)
@@ -68,6 +81,7 @@ class BytecodeCompiler:
             self.instructions.append((OpCode.UNARY_OP, node.op))
             
         elif isinstance(node, ExprCond):
+            # Keep test value for branching, then pop before evaluating chosen branch.
             self._compile_node(node.test)
             else_jump_idx = len(self.instructions)
             self.instructions.append((OpCode.JUMP_IF_FALSE, 0))
@@ -131,11 +145,23 @@ class BytecodeVM:
         if op == "+": return left + right
         if op == "-": return left - right
         if op == "*": return left * right
-        if op == "/": return left / right if right != 0 else None
+        if op == "/":
+            if right == 0:
+                raise MPCError("E_EXPR_DIV_BY_ZERO", "Division by zero")
+            return left / right
+        if op == "%":
+            if right == 0:
+                raise MPCError("E_EXPR_DIV_BY_ZERO", "Modulo by zero")
+            return left % right
         if op == "==": return left == right
         if op == "!=": return left != right
         if op == "<": return left < right
         if op == ">": return left > right
+        if op == "<=": return left <= right
+        if op == ">=": return left >= right
         if op == "and": return bool(left and right)
         if op == "or": return bool(left or right)
+        if op == "matches":
+            import re
+            return bool(re.search(str(right), str(left)))
         return None

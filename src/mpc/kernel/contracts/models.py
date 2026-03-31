@@ -64,9 +64,10 @@ class SourceMap:
 class Error:
     code: str
     message: str
-    severity: str  # info | warn | error | fatal
+    severity: str = "error"  # info | warn | error | fatal
     path: str | None = None
     source: SourceMap | None = None
+    properties: dict[str, Any] | None = None
     details: dict[str, Any] | None = None
     causes: list[Error] | None = None
 
