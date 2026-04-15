@@ -1,0 +1,5 @@
+{
+  "category": "imports",
+  "description": "basic import merges definitions into base AST"
+}
+

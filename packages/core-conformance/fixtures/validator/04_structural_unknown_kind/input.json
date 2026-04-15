@@ -1,0 +1,8 @@
+{
+  "namespace": "acme",
+  "meta_kinds": ["Workflow"],
+  "defs": [
+    { "kind": "UnknownKind", "id": "u1" }
+  ]
+}
+

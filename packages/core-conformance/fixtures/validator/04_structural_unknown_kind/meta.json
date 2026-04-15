@@ -1,0 +1,7 @@
+{
+  "category": "validator",
+  "description": "structural validation rejects unknown kinds when meta_kinds is provided",
+  "preset": "preset-generic-full",
+  "clock": "2026-01-01T00:00:00Z"
+}
+

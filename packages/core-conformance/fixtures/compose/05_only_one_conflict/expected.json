@@ -1,0 +1,5 @@
+{
+  "allow": false,
+  "reasons": [{ "code": "E_COMPOSE_CONFLICT" }]
+}
+

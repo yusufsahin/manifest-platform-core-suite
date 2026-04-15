@@ -1,0 +1,5 @@
+{
+  "category": "expr",
+  "description": "division by zero yields E_EXPR_DIV_BY_ZERO"
+}
+

@@ -1,0 +1,11 @@
+{
+  "states": ["A", "B"],
+  "initial": "A",
+  "current": ["A"],
+  "transitions": [
+    { "from": "A", "to": "B", "on": "timeout", "timeout_ms": 10 }
+  ],
+  "timeout_check": true,
+  "advance_ms": 11
+}
+

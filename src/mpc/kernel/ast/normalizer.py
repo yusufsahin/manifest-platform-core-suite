@@ -17,6 +17,7 @@ from typing import Any
 
 from mpc.kernel.ast.models import ASTNode, ManifestAST
 from mpc.kernel.contracts.models import SourceMap
+from mpc.kernel.errors import MPCError
 
 _RESERVED_KEYS = frozenset({"kind", "id", "name", "children", "source"})
 
@@ -34,6 +35,13 @@ def normalize(raw: dict[str, Any]) -> ManifestAST:
 
 
 def _normalize_node(raw: dict[str, Any]) -> ASTNode:
+    kind = raw.get("kind", "")
+    node_id = raw.get("id", "")
+    if not kind:
+        raise MPCError("E_PARSE_MISSING_REQUIRED", "Node must have a non-empty 'kind' field")
+    if not node_id:
+        raise MPCError("E_PARSE_MISSING_REQUIRED", f"Node of kind '{kind}' must have a non-empty 'id' field")
+
     props = {k: v for k, v in raw.items() if k not in _RESERVED_KEYS}
 
     source_raw = raw.get("source")
@@ -51,8 +59,8 @@ def _normalize_node(raw: dict[str, Any]) -> ASTNode:
     children = [_normalize_node(c) for c in children_raw]
 
     return ASTNode(
-        kind=raw.get("kind", ""),
-        id=raw.get("id", ""),
+        kind=kind,
+        id=node_id,
         name=raw.get("name"),
         properties=props,
         children=children,

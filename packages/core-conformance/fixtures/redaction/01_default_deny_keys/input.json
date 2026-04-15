@@ -1,0 +1,9 @@
+{
+  "data": {
+    "user": "alice",
+    "password": "p@ss",
+    "token": "t0k",
+    "profile": { "ssn": "123-45-6789" }
+  }
+}
+

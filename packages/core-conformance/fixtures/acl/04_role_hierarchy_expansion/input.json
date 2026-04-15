@@ -1,0 +1,13 @@
+{
+  "action": "read",
+  "actor": { "id": "u1", "roles": ["admin"], "attrs": {} },
+  "object": { "id": "x", "type": "document" },
+  "role_hierarchy": {
+    "admin": ["editor"],
+    "editor": ["viewer"]
+  },
+  "rules": [
+    { "id": "viewer_read", "action": "read", "roles": ["viewer"], "resource": "*", "effect": "allow" }
+  ]
+}
+

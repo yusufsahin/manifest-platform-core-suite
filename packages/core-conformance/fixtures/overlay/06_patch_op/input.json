@@ -1,0 +1,17 @@
+{
+  "base": {
+    "namespace": "acme",
+    "kind": "Policy",
+    "id": "p1",
+    "attributes": { "effect": "allow", "ttl": 3600 }
+  },
+  "overlays": [
+    {
+      "id": "ov1",
+      "op": "patch",
+      "selector": { "id": "p1", "kind": "Policy" },
+      "values": { "attributes": { "ttl": 7200 } }
+    }
+  ]
+}
+

@@ -1,0 +1,53 @@
+{
+  "field_state": [
+    {
+      "field_id": "email",
+      "readonly": true,
+      "visible": true
+    },
+    {
+      "field_id": "name",
+      "readonly": false,
+      "visible": true
+    }
+  ],
+  "json_schema": {
+    "properties": {
+      "email": {
+        "title": "Email",
+        "type": "string",
+        "x-field-id": "email"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "x-field-id": "name"
+      }
+    },
+    "required": [
+      "email"
+    ],
+    "title": "Signup",
+    "type": "object",
+    "x-form-id": "signup"
+  },
+  "ui_schema": {
+    "email": {},
+    "name": {},
+    "ui:order": [
+      "email",
+      "name"
+    ]
+  },
+  "validation": {
+    "errors": [
+      {
+        "expr": null,
+        "field_id": "email",
+        "message": "'Email' alanı zorunludur"
+      }
+    ],
+    "valid": false
+  }
+}
+

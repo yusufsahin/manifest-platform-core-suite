@@ -1,0 +1,54 @@
+{
+  "field_state": [
+    {
+      "field_id": "email",
+      "readonly": false,
+      "visible": true
+    },
+    {
+      "field_id": "age",
+      "readonly": false,
+      "visible": true
+    }
+  ],
+  "json_schema": {
+    "properties": {
+      "age": {
+        "minimum": 18,
+        "title": "Age",
+        "type": "number",
+        "x-field-id": "age"
+      },
+      "email": {
+        "title": "Email",
+        "type": "string",
+        "x-field-id": "email"
+      }
+    },
+    "required": [
+      "email"
+    ],
+    "title": "Signup",
+    "type": "object",
+    "x-form-id": "signup"
+  },
+  "ui_schema": {
+    "age": {},
+    "email": {},
+    "ui:order": [
+      "email",
+      "age"
+    ]
+  },
+  "validation": {
+    "errors": [
+      {
+        "expr": null,
+        "field_id": "email",
+        "message": "'Email' alanı zorunludur"
+      }
+    ],
+    "valid": false
+  }
+}
+

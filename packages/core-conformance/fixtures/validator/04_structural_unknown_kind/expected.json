@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "code": "E_META_UNKNOWN_KIND",
+      "message": "Unknown kind 'UnknownKind' on def 'u1'",
+      "severity": "error"
+    }
+  ]
+}
+

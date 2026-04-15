@@ -1,0 +1,9 @@
+{
+  "category": "workflow",
+  "description": "transition and state actions are executed in order",
+  "include_actions": true,
+  "include_state": true,
+  "preset": "preset-generic-full",
+  "clock": "2026-01-01T00:00:00Z"
+}
+

@@ -1,0 +1,13 @@
+{
+  "data": {
+    "items": [
+      { "id": "1", "apiKey": "***" },
+      { "id": "2", "authorization": "***" }
+    ],
+    "nested": {
+      "credit_card": "***",
+      "ok": true
+    }
+  }
+}
+

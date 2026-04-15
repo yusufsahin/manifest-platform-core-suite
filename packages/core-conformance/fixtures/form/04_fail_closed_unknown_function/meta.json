@@ -1,0 +1,6 @@
+{
+  "category": "form",
+  "description": "fail_open=false causes expr errors to fail closed (hide/readonly depending on default)",
+  "preset": "preset-generic-full"
+}
+

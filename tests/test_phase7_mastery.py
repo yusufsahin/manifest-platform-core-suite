@@ -52,6 +52,3 @@ def test_short_circuit_and_vm():
     assert res.value == False
     assert res.steps < 5 # Should be very few steps
 
-if __name__ == "__main__":
-    # Manual run for perf check
-    test_vm_performance_simple()

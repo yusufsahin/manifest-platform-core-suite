@@ -1,0 +1,8 @@
+{
+  "stable_hash": "v1",
+  "canary_hash": "v2",
+  "weight": 0.0,
+  "segments": { "region": ["US"] },
+  "attributes": { "region": "US" }
+}
+

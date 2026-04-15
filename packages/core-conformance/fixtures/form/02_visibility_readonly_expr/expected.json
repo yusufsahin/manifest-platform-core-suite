@@ -1,0 +1,46 @@
+{
+  "field_state": [
+    {
+      "field_id": "nickname",
+      "readonly": false,
+      "visible": false
+    },
+    {
+      "field_id": "ssn",
+      "readonly": true,
+      "visible": true
+    }
+  ],
+  "json_schema": {
+    "properties": {
+      "nickname": {
+        "title": "Nickname",
+        "type": "string",
+        "x-field-id": "nickname",
+        "x-visibility-expr": "len(name) > 0"
+      },
+      "ssn": {
+        "title": "SSN",
+        "type": "string",
+        "x-field-id": "ssn",
+        "x-readonly-expr": "role == 'guest'"
+      }
+    },
+    "title": "Profile",
+    "type": "object",
+    "x-form-id": "profile"
+  },
+  "ui_schema": {
+    "nickname": {},
+    "ssn": {},
+    "ui:order": [
+      "nickname",
+      "ssn"
+    ]
+  },
+  "validation": {
+    "errors": [],
+    "valid": true
+  }
+}
+

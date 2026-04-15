@@ -1,0 +1,9 @@
+{
+  "manifests": {
+    "a": "@schema 1\n@namespace \"a\"\n@name \"a\"\n@version \"1.0.0\"\n\ndef Import b { source: \"b\" }\n\ndef Policy pA { rules: [] }\n",
+    "b": "@schema 1\n@namespace \"b\"\n@name \"b\"\n@version \"1.0.0\"\n\ndef Import a { source: \"a\" }\n\ndef Policy pB { rules: [] }\n"
+  },
+  "versions": { "a": "1.0.0", "b": "1.0.0" },
+  "dsl": "@schema 1\n@namespace \"app\"\n@name \"app\"\n@version \"1.0.0\"\n\ndef Import a { source: \"a\" }\n\ndef Workflow w1 { initial: \"S\" states: [\"S\"] transitions: [] }\n"
+}
+

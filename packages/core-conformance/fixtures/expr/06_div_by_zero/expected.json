@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "E_EXPR_DIV_BY_ZERO",
+    "message": "Division by zero",
+    "severity": "error"
+  }
+}
+

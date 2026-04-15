@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "E_VALID_CYCLE_DETECTED",
+    "message": "Import cycle detected: app -> a -> b -> a",
+    "severity": "error"
+  }
+}
+

@@ -20,6 +20,15 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
+aws = [
+    "boto3>=1.26",
+]
+sqlalchemy = [
+    "sqlalchemy>=2.0",
+]
+redis = [
+    "redis>=4.0",
+]
 
 [project.scripts]
 mpc-conformance = "mpc.tooling.conformance.__main__:main"

@@ -1,0 +1,6 @@
+{
+  "category": "form",
+  "description": "ACL maskField intents mark fields readonly in form package",
+  "preset": "preset-generic-full"
+}
+

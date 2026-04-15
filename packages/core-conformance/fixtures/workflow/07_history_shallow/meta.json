@@ -1,0 +1,8 @@
+{
+  "category": "workflow",
+  "description": "shallow history restores last active child",
+  "include_state": true,
+  "preset": "preset-generic-full",
+  "clock": "2026-01-01T00:00:00Z"
+}
+

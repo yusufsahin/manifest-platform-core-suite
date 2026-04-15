@@ -1,0 +1,6 @@
+{
+  "dsl": "@schema 1\n@namespace \"t\"\n@name \"t\"\n@version \"1.0.0\"\n\ndef FormDef signup \"Signup\" {\n  def FieldDef email \"Email\" { type: \"string\" required: true }\n  def FieldDef age \"Age\" { type: \"number\" min: 18 }\n}\n",
+  "form_id": "signup",
+  "data": {}
+}
+

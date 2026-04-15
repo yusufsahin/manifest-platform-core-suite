@@ -42,7 +42,7 @@ def generate_ui_schema(
     for node in defs_sorted:
         schema_key = f"{node.kind}:{node.id}"
         kind_def = kind_defs.get(node.kind)
-        schema = _build_node_schema(node, kind_def, warnings)
+        schema = _build_node_schema(node, kind_def, warnings, kind_defs)
         schemas[schema_key] = schema
 
     return UISchemaResult(schemas=schemas, warnings=warnings)
@@ -52,6 +52,7 @@ def _build_node_schema(
     node: ASTNode,
     kind_def: KindDef | None,
     warnings: list[str],
+    kind_defs: dict[str, KindDef] | None = None,
 ) -> dict[str, Any]:
     schema: dict[str, Any] = {
         "type": "object",
@@ -78,8 +79,10 @@ def _build_node_schema(
 
     if node.children:
         children_schemas = []
+        kd = kind_defs or {}
         for child in sorted(node.children, key=lambda c: (c.kind, c.id)):
-            children_schemas.append(_build_node_schema(child, kind_def, warnings))
+            child_kind_def = kd.get(child.kind)
+            children_schemas.append(_build_node_schema(child, child_kind_def, warnings, kd))
         schema["x-children"] = children_schemas
 
     return schema

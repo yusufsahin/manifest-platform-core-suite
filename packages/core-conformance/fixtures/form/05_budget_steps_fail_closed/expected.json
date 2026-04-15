@@ -1,0 +1,33 @@
+{
+  "field_state": [
+    {
+      "field_id": "a",
+      "readonly": false,
+      "visible": false
+    }
+  ],
+  "json_schema": {
+    "properties": {
+      "a": {
+        "title": "A",
+        "type": "string",
+        "x-field-id": "a",
+        "x-visibility-expr": "1+1+1+1+1+1+1+1+1+1+1+1"
+      }
+    },
+    "title": "Big",
+    "type": "object",
+    "x-form-id": "big"
+  },
+  "ui_schema": {
+    "a": {},
+    "ui:order": [
+      "a"
+    ]
+  },
+  "validation": {
+    "errors": [],
+    "valid": true
+  }
+}
+

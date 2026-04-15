@@ -1,0 +1,10 @@
+{
+  "config": {
+    "deny_patterns": ["*.secret"]
+  },
+  "data": {
+    "a": { "secret": "x", "ok": 1 },
+    "b": { "secret": "y", "ok": 2 }
+  }
+}
+

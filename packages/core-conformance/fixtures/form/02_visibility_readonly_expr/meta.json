@@ -1,0 +1,6 @@
+{
+  "category": "form",
+  "description": "visibilityExpr and readonlyExpr are evaluated by engine",
+  "preset": "preset-generic-full"
+}
+

@@ -1,0 +1,10 @@
+{
+  "action": "delete",
+  "actor": { "id": "u1", "roles": ["ops"], "attrs": {} },
+  "object": { "id": "x", "type": "document" },
+  "rules": [
+    { "id": "allow_ops", "action": "delete", "roles": ["ops"], "resource": "*", "effect": "allow", "priority": 1 },
+    { "id": "deny_ops", "action": "delete", "roles": ["ops"], "resource": "*", "effect": "deny", "priority": 10 }
+  ]
+}
+

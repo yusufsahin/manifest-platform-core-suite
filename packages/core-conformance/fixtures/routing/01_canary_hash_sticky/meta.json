@@ -1,0 +1,5 @@
+{
+  "category": "routing",
+  "description": "actor_id hash stickiness routes deterministically by bucket"
+}
+

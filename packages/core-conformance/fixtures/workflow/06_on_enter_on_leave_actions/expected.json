@@ -1,0 +1,7 @@
+{
+  "allow": true,
+  "reasons": [{ "code": "R_WF_GUARD_PASS" }],
+  "state": "B",
+  "actions": ["leaveA", "tLeave", "tEnter", "enterB"]
+}
+

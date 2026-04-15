@@ -1,0 +1,7 @@
+{
+  "category": "imports",
+  "description": "cycle detection returns E_VALID_CYCLE_DETECTED",
+  "preset": "preset-generic-full",
+  "clock": "2026-01-01T00:00:00Z"
+}
+

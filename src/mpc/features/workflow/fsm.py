@@ -23,6 +23,27 @@ from mpc.kernel.contracts.models import Decision, Error, Intent, Reason
 # Port interfaces for consuming apps
 # ---------------------------------------------------------------------------
 
+def _normalize_transition_dict(tr: dict[str, Any]) -> dict[str, Any]:
+    """Normalize snake_case and camelCase workflow transition keys."""
+    on_enter = tr.get("on_enter") or tr.get("onEnter") or []
+    on_leave = tr.get("on_leave") or tr.get("onLeave") or []
+    if isinstance(on_enter, str):
+        on_enter = [on_enter]
+    if isinstance(on_leave, str):
+        on_leave = [on_leave]
+    return {
+        "from": str(tr.get("from", "")),
+        "to": str(tr.get("to", "")),
+        "on": str(tr.get("on", tr.get("to", ""))),
+        "guard": tr.get("guard"),
+        "auth_roles": tr.get("auth_roles") or tr.get("authRoles") or [],
+        "on_enter": list(on_enter),
+        "on_leave": list(on_leave),
+        "rule_type": tr.get("rule_type", "fixed"),
+        "timeout_ms": tr.get("timeout_ms") or tr.get("timeout"),
+    }
+
+
 @runtime_checkable
 class GuardPort(Protocol):
     """Interface for external guard logic."""
@@ -90,8 +111,19 @@ class WorkflowSpec:
     manifest_version: str = "1.0"
     
     def to_json(self) -> str:
-        """Serialize spec to JSON for designer tools."""
-        return json.dumps(self.__dict__, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))
+        """Serialize spec to canonical JSON for designer tools."""
+        from mpc.kernel.canonical.serializer import canonicalize
+
+        def _to_serializable(obj: Any) -> Any:
+            if hasattr(obj, '__dataclass_fields__'):
+                return {k: _to_serializable(v) for k, v in vars(obj).items()}
+            if isinstance(obj, (set, frozenset)):
+                return sorted(_to_serializable(i) for i in obj)
+            if isinstance(obj, (list, tuple)):
+                return [_to_serializable(i) for i in obj]
+            return obj
+
+        return canonicalize(_to_serializable(self))
 
 
 @dataclass(frozen=True)
@@ -170,6 +202,7 @@ class WorkflowEngine:
         initial = str(data.get("initial", ""))
         initials = set(data.get("initials", [initial] if initial else []))
         finals = set(data.get("finals") or [])
+        history_modes = data.get("history_modes", {}) if isinstance(data.get("history_modes"), dict) else {}
 
         states: dict[str, FSMState] = {}
         for s in state_names:
@@ -189,25 +222,23 @@ class WorkflowEngine:
                 on_activate=data.get("on_activate", {}).get(s, []),
                 on_deactivate=data.get("on_deactivate", {}).get(s, []),
                 is_parallel=is_p,
+                history_mode=history_modes.get(s),
             )
 
         transitions: list[Transition] = []
         for tr in data.get("transitions") or []:
             if isinstance(tr, dict):
-                on_enter = tr.get("on_enter") or tr.get("onEnter") or []
-                on_leave = tr.get("on_leave") or tr.get("onLeave") or []
-                if isinstance(on_enter, str): on_enter = [on_enter]
-                if isinstance(on_leave, str): on_leave = [on_leave]
+                n = _normalize_transition_dict(tr)
                 transitions.append(Transition(
-                    from_state=str(tr.get("from", "")),
-                    to_state=str(tr.get("to", "")),
-                    on=str(tr.get("on", tr.get("to", ""))),
-                    guard=tr.get("guard"),
-                    auth_roles=tr.get("authRoles", tr.get("auth_roles", [])),
-                    on_enter=list(on_enter),
-                    on_leave=list(on_leave),
-                    rule_type=tr.get("rule_type", "fixed"),
-                    timeout_ms=tr.get("timeout_ms", tr.get("timeout")),
+                    from_state=n["from"],
+                    to_state=n["to"],
+                    on=n["on"],
+                    guard=n["guard"],
+                    auth_roles=n["auth_roles"],
+                    on_enter=n["on_enter"],
+                    on_leave=n["on_leave"],
+                    rule_type=n["rule_type"],
+                    timeout_ms=n["timeout_ms"],
                 ))
 
         engine = cls(
@@ -277,17 +308,17 @@ class WorkflowEngine:
         transitions: list[Transition] = []
         for tr in node.properties.get("transitions", []):
             if isinstance(tr, dict):
-                on_enter = tr.get("on_enter") or tr.get("onEnter") or []
-                on_leave = tr.get("on_leave") or tr.get("onLeave") or []
+                n = _normalize_transition_dict(tr)
                 transitions.append(Transition(
-                    from_state=str(tr.get("from", "")),
-                    to_state=str(tr.get("to", "")),
-                    on=str(tr.get("on", tr.get("to", ""))),
-                    guard=tr.get("guard"),
-                    auth_roles=tr.get("auth_roles", tr.get("authRoles", [])),
-                    on_enter=list(on_enter),
-                    on_leave=list(on_leave),
-                    rule_type=tr.get("rule_type", "fixed"),
+                    from_state=n["from"],
+                    to_state=n["to"],
+                    on=n["on"],
+                    guard=n["guard"],
+                    auth_roles=n["auth_roles"],
+                    on_enter=n["on_enter"],
+                    on_leave=n["on_leave"],
+                    rule_type=n["rule_type"],
+                    timeout_ms=n["timeout_ms"],
                 ))
 
         engine = cls(
@@ -746,9 +777,9 @@ class WorkflowEngine:
             history_states = self._history[state_name]
             for h in history_states:
                 target_set.add(h)
-                # Recurse if needed for parallel entry etc.
-                # Actually history states are already the leaf active states
-                pass
+                # History states already represent the leaf active substates at the time
+                # history was saved; no further recursion is needed here (even for parallel
+                # parents) because we restore the concrete active leaves directly.
         else:
             self._add_child_initials_to_set(state_name, target_set)
 

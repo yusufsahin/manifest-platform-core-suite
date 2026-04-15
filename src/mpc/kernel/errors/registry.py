@@ -10,6 +10,7 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_PARSE_SYNTAX",
     "E_PARSE_INVALID_TOKEN",
     "E_PARSE_UNSUPPORTED_FORMAT",
+    "E_PARSE_MISSING_REQUIRED",
     # Meta
     "E_META_UNKNOWN_KIND",
     "E_META_MISSING_REQUIRED_FIELD",
@@ -51,6 +52,12 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_OVERLAY_INVALID_OP",
     # Compose
     "E_COMPOSE_CONFLICT",
+    # Form (Studio/Runtime)
+    "E_FORM_DSL_TOO_LARGE",
+    "E_FORM_DATA_TOO_LARGE",
+    "E_FORM_ACTOR_TOO_LARGE",
+    "E_FORM_EXPR_FAILED",
+    "E_FORM_TIMEOUT",
     # Governance / Enterprise
     "E_GOV_SIGNATURE_REQUIRED",
     "E_GOV_SIGNATURE_INVALID",

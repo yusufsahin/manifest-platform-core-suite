@@ -1,0 +1,11 @@
+{
+  "states": ["A", "B"],
+  "initial": "A",
+  "on_leave": { "A": ["leaveA"] },
+  "on_enter": { "B": ["enterB"] },
+  "transitions": [
+    { "from": "A", "to": "B", "on": "go", "on_leave": ["tLeave"], "on_enter": ["tEnter"] }
+  ],
+  "event": "go"
+}
+

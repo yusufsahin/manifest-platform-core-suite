@@ -7,6 +7,7 @@ from mpc.tooling.validator.structural import validate_structural
 from mpc.tooling.validator.semantic import validate_semantic
 from mpc.kernel.meta.diff import detect_drift
 from mpc.kernel.meta.models import DomainMeta, KindDef
+from mpc.kernel.ast.models import ManifestAST
 from mpc.features.workflow import WorkflowEngine
 
 def main():
@@ -17,6 +18,7 @@ def main():
     val_parser = subparsers.add_parser("validate", help="Validate a manifest file")
     val_parser.add_argument("file", help="Path to manifest file (.manifest, .yaml, .json)")
     val_parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    val_parser.add_argument("--meta", help="Optional DomainMeta JSON file for structural validation and drift detection")
 
     # Export
     exp_parser = subparsers.add_parser("export", help="Export manifest to other formats")
@@ -79,6 +81,10 @@ def main():
     acl_parser.add_argument("--roles", help="Comma-separated roles")
     acl_parser.add_argument("--attrs", help="JSON string of actor attributes")
 
+    # List forms
+    lf_parser = subparsers.add_parser("list-forms", help="List FormDef definitions in a manifest")
+    lf_parser.add_argument("file", help="Manifest file")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -114,19 +120,25 @@ def main():
         ast = parse(text)
 
         if args.command == "validate":
-            # For CLI validation, we use a generic meta or allow all kinds
             kind_names = sorted({node.kind for node in ast.defs if isinstance(node.kind, str)})
-            meta = DomainMeta(kinds=[KindDef(name=name) for name in kind_names])
-            
+
+            meta: DomainMeta
+            meta_path = getattr(args, "meta", None)
+            if meta_path:
+                meta_text = Path(meta_path).read_text(encoding="utf-8")
+                meta_json = json.loads(meta_text)
+                meta = DomainMeta.from_dict(meta_json) if hasattr(DomainMeta, "from_dict") else DomainMeta(**meta_json)
+            else:
+                # Fallback: permissive meta derived from AST to avoid false unknown-kind noise.
+                meta = DomainMeta(kinds=[KindDef(name=name) for name in kind_names])
+
             s_errs = validate_structural(ast, meta)
-            # Drift Detection
-            # In a real scenario, meta would be loaded from a registered domain.
-            # For this CLI tool, we'll use a placeholder/derived meta or skip if not provided.
-            # Placeholder for now to demonstrate integrated drift detection
-            demo_meta = DomainMeta(kinds=[KindDef(name="Workflow", required_props=["initial"])])
-            drifts = detect_drift(ast, demo_meta)
-            for drift in drifts:
-                print(f"DRIFT: {drift}")
+
+            # Drift detection is only meaningful when meta is provided explicitly.
+            drifts = detect_drift(ast, meta) if meta_path else []
+            if not args.json:
+                for drift in drifts:
+                    print(f"DRIFT: {drift}")
 
             m_errs = validate_semantic(ast)
             all_errs = s_errs + m_errs
@@ -138,7 +150,8 @@ def main():
                 print(json.dumps(json_output))
             else:
                 if not all_errs and not drifts:
-                    print("✓ Validation passed.")
+                                        # Avoid non-ASCII glyphs: Windows consoles often default to a legacy code page.
+                    print("OK: Validation passed.")
                 for e in all_errs:
                     print(f"[{e.severity.upper()}] {e.code}: {e.message}")
                 for d in drifts:
@@ -185,6 +198,9 @@ def main():
 
         elif args.command == "acl-check":
             _run_acl_check(args)
+
+        elif args.command == "list-forms":
+            _run_list_forms(ast)
 
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)
@@ -287,8 +303,8 @@ def _run_resolve_imports(args):
                     with open(path, "r", encoding="utf-8") as f_obj:
                         name = os.path.splitext(f)[0]
                         resolver.register(name, parse(f_obj.read()))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"[WARN] Could not parse '{path}' for import registry: {exc}", file=sys.stderr)
 
     _reg_dir(os.path.dirname(os.path.abspath(args.file)))
 
@@ -457,6 +473,31 @@ def _run_acl_check(args):
     print(f"DECISION: {'ALLOW' if res.allowed else 'DENY'}")
     for r in res.reasons:
         print(f"REASON: [{r.code}] {r.summary}")
+
+
+def _run_list_forms(ast: ManifestAST):
+    """List FormDef nodes: id, title, workflow fields, field summary, jsonSchema."""
+    from mpc.features.form.engine import FormEngine
+    from mpc.features.form.kinds import FORM_KINDS
+
+    meta = DomainMeta(kinds=FORM_KINDS)
+    engine = FormEngine(ast=ast, meta=meta)
+    forms = engine.get_forms()
+
+    output = [
+        {
+            "id": form.id,
+            "title": form.title,
+            "workflowState": form.workflow_state,
+            "workflowTrigger": form.workflow_trigger,
+            "fieldCount": len(form.fields),
+            "fields": [{"id": f.id, "type": f.type, "required": f.required} for f in form.fields],
+            "jsonSchema": form.to_json_schema(),
+        }
+        for form in forms
+    ]
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
 
 if __name__ == "__main__":
     main()

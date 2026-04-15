@@ -1,0 +1,7 @@
+{
+  "dsl": "@schema 1\n@namespace \"t\"\n@name \"t\"\n@version \"1.0.0\"\n\ndef FormDef big \"Big\" {\n  def FieldDef a \"A\" { type: \"string\" visibilityExpr: \"1+1+1+1+1+1+1+1+1+1+1+1\" }\n}\n",
+  "form_id": "big",
+  "fail_open": false,
+  "data": {}
+}
+

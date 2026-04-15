@@ -1,0 +1,8 @@
+{
+  "strategy": "first-applicable",
+  "decisions": [
+    { "allow": true, "reasons": [{ "code": "R_POLICY_ALLOW", "summary": "allow" }] },
+    { "allow": false, "reasons": [{ "code": "R_ACL_DENY_ROLE", "summary": "deny" }] }
+  ]
+}
+

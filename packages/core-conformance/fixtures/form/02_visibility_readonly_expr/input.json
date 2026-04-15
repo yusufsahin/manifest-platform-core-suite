@@ -1,0 +1,7 @@
+{
+  "dsl": "@schema 1\n@namespace \"t\"\n@name \"t\"\n@version \"1.0.0\"\n\ndef FormDef profile \"Profile\" {\n  def FieldDef nickname \"Nickname\" { type: \"string\" visibilityExpr: \"len(name) > 0\" }\n  def FieldDef ssn \"SSN\" { type: \"string\" readonlyExpr: \"role == 'guest'\" }\n}\n",
+  "form_id": "profile",
+  "data": { "name": "" },
+  "actor_roles": ["guest"]
+}
+

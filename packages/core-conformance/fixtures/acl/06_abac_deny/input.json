@@ -1,0 +1,20 @@
+{
+  "action": "read",
+  "actor": {
+    "id": "u1",
+    "roles": [],
+    "type": "user",
+    "attrs": { "department": "sales" }
+  },
+  "object": { "id": "doc-1", "type": "document" },
+  "rules": [
+    {
+      "id": "eng_read",
+      "action": "read",
+      "resource": "*",
+      "condition": { "department": "engineering" },
+      "effect": "allow"
+    }
+  ]
+}
+

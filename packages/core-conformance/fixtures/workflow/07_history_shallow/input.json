@@ -1,0 +1,15 @@
+{
+  "states": ["A", "B", "C", "D"],
+  "initial": "A",
+  "parents": { "C": "B", "D": "B" },
+  "history_modes": { "B": "shallow" },
+  "initials": ["A", "C"],
+  "transitions": [
+    { "from": "A", "to": "B", "on": "enter_b" },
+    { "from": "C", "to": "D", "on": "next" },
+    { "from": "B", "to": "A", "on": "exit_b" }
+  ],
+  "current": ["A"],
+  "event": ["enter_b", "next", "exit_b", "enter_b"]
+}
+

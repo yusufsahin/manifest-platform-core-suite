@@ -1,0 +1,8 @@
+{
+  "dsl": "@schema 1\n@namespace \"t\"\n@name \"t\"\n@version \"1.0.0\"\n\ndef FormDef profile \"Profile\" {\n  def FieldDef nickname \"Nickname\" { type: \"string\" visibilityExpr: \"unknownFn(name)\" }\n  def FieldDef ssn \"SSN\" { type: \"string\" readonlyExpr: \"unknownFn(role)\" }\n}\n",
+  "form_id": "profile",
+  "fail_open": false,
+  "data": { "name": "Ada" },
+  "actor_roles": ["guest"]
+}
+

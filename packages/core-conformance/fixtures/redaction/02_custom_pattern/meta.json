@@ -1,0 +1,5 @@
+{
+  "category": "redaction",
+  "description": "deny_patterns masks nested keys by glob"
+}
+

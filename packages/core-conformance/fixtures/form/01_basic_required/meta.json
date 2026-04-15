@@ -1,0 +1,6 @@
+{
+  "category": "form",
+  "description": "Basic required field validation returns invalid when missing",
+  "preset": "preset-generic-full"
+}
+

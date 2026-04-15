@@ -1,0 +1,7 @@
+{
+  "dsl": "@schema 1\n@namespace \"t\"\n@name \"t\"\n@version \"1.0.0\"\n\ndef ACL mask_email {\n  action: \"read\"\n  resource: \"email\"\n  roles: [\"user\"]\n  effect: \"allow\"\n  maskFields: [\"email\"]\n}\n\ndef FormDef signup \"Signup\" {\n  def FieldDef email \"Email\" { type: \"string\" required: true }\n  def FieldDef name \"Name\" { type: \"string\" }\n}\n",
+  "form_id": "signup",
+  "data": { "name": "Ada" },
+  "actor_roles": ["user"]
+}
+

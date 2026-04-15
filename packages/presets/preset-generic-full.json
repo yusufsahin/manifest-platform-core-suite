@@ -19,11 +19,36 @@
       "cost": 2
     },
     {
+      "name": "substr",
+      "args": [
+        "string",
+        "int",
+        "int"
+      ],
+      "returns": "string",
+      "cost": 3
+    },
+    {
+      "name": "concat",
+      "args": [
+        "any",
+        "any"
+      ],
+      "returns": "string",
+      "cost": 3
+    },
+    {
       "name": "isEmpty",
       "args": [
         "any"
       ],
       "returns": "bool",
+      "cost": 2
+    },
+    {
+      "name": "now",
+      "args": [],
+      "returns": "string",
       "cost": 2
     },
     {

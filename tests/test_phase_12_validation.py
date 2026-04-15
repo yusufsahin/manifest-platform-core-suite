@@ -54,8 +54,3 @@ def test_registry_promotion():
     assert versions["stable"].hash == "h-1"
     assert "canary" not in versions
 
-if __name__ == "__main__":
-    test_quorum_activation()
-    test_segmented_canary()
-    test_registry_promotion()
-    print("Phase 12 verification SUCCESS")

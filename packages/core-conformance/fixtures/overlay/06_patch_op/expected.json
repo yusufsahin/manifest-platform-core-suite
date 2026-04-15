@@ -1,0 +1,7 @@
+{
+  "id": "p1",
+  "kind": "Policy",
+  "namespace": "acme",
+  "attributes": { "effect": "allow", "ttl": 7200 }
+}
+

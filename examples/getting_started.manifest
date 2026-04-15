@@ -1,0 +1,20 @@
+@schema 1
+@namespace "myapp"
+@name "example"
+@version "1.0"
+
+def Entity user "User" {
+    name: "User"
+    maxLength: 50
+    active: true
+}
+
+def Workflow approval "Approval Flow" {
+    initial: "pending"
+    states: ["pending", "approved", "rejected"]
+    finals: ["approved", "rejected"]
+    transitions: [
+        {"from": "pending", "on": "approve", "to": "approved"},
+        {"from": "pending", "on": "reject", "to": "rejected"}
+    ]
+}

@@ -1,0 +1,9 @@
+{
+  "category": "form",
+  "description": "expr step budget exceeded fails closed for visibilityExpr",
+  "preset": "preset-generic-full",
+  "limits": {
+    "maxExprSteps": 10
+  }
+}
+

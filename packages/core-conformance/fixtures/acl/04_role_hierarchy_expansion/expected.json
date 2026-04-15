@@ -1,0 +1,5 @@
+{
+  "allow": true,
+  "reasons": [{ "code": "R_ACL_ALLOW_ROLE" }]
+}
+

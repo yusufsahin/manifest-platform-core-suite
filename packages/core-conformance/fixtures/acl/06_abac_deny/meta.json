@@ -1,0 +1,7 @@
+{
+  "category": "acl",
+  "description": "ABAC condition mismatch falls back to default deny",
+  "preset": "preset-generic-full",
+  "clock": "2026-01-01T00:00:00Z"
+}
+
