@@ -153,7 +153,11 @@ class ActivationProtocol:
                     ))
             except Exception as exc:
                 # Audit logging is best-effort after the swap is already committed.
-                pass
+                errors.append(Error(
+                    code="E_GOV_ACTIVATION_FAILED",
+                    message=f"Post-activation audit raised: {exc}",
+                    severity="warn",
+                ))
         completed.append(ActivationStep.AUDIT.value)
 
         # Step 6: Cache invalidation (consuming app responsibility)

@@ -45,10 +45,11 @@ class ACLEngine:
         *,
         actor_roles: list[str] | None = None,
         actor_attrs: dict[str, Any] | None = None,
+        expr_engine: ExprEngine | None = None,
     ) -> ACLResult:
         """Check if *action* on *resource* is allowed for the given actor."""
         effective_roles = self._expand_roles(set(actor_roles or []))
-        expr_engine = ExprEngine(meta=self.meta) if self.meta else None
+        expr_engine = expr_engine or (ExprEngine(meta=self.meta) if self.meta else None)
 
         acl_defs = [d for d in self.ast.defs if d.kind == "ACL"]
         acl_defs.sort(key=lambda d: (-d.properties.get("priority", 0), d.id))

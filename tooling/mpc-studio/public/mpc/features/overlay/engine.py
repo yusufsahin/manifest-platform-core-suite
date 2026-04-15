@@ -134,7 +134,7 @@ class OverlayEngine:
                                 code="E_OVERLAY_CONFLICT",
                                 message=(
                                     f"Conflicting overlays on path '{path}': "
-                                    "two replace ops produce different values"
+                                    "more than one replace op targets the same path"
                                 ),
                                 severity="error",
                                 source=overlay_def.source,
@@ -253,7 +253,13 @@ class OverlayEngine:
             elif op == "patch":
                 for key in matched_keys:
                     existing = base_by_key[key]
-                    merged = {**existing.properties, **values}
+                    merged = dict(existing.properties)
+                    for prop_key, prop_val in values.items():
+                        existing_val = merged.get(prop_key)
+                        if isinstance(existing_val, dict) and isinstance(prop_val, dict):
+                            merged[prop_key] = {**existing_val, **prop_val}
+                        else:
+                            merged[prop_key] = prop_val
                     base_by_key[key] = ASTNode(
                         kind=existing.kind,
                         id=existing.id,

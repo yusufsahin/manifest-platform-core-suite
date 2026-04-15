@@ -72,7 +72,7 @@ const Sidebar = ({ result, files, activeFile, onOpenFolder, onFileSelect, active
               <p className="text-[10px] text-slate-500 uppercase tracking-[0.18em] mb-2">{section.group}</p>
               <div className="space-y-1">
                 {section.items.map((item) => {
-                  const Icon = iconMap[item.icon];
+                  const Icon = iconMap[item.icon as keyof typeof iconMap];
                   return (
                     <button
                       key={item.id}

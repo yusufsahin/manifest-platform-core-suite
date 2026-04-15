@@ -4,10 +4,20 @@ let pyodide: PyodideInterface | null = null;
 let libraryLoaded = false;
 let runtimeLock: Promise<void> = Promise.resolve();
 
+const PYODIDE_CDN =
+  (import.meta as any)?.env?.VITE_PYODIDE_CDN_URL ??
+  'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/';
+
 interface WorkflowLimits {
   maxSteps: number;
   maxPayloadBytes: number;
   maxEventNameLength: number;
+}
+
+interface FormLimits {
+  maxDslBytes: number;
+  maxDataBytes: number;
+  maxActorBytes: number;
 }
 
 function estimateBytes(value: unknown): number {
@@ -47,6 +57,37 @@ function remediationHintFor(errorCode: string): string {
 
 const DEFINITION_CONTRACT_VERSION = '2.0.0';
 
+function readEnvNumber(name: string, fallback: number): number {
+  try {
+    const raw = (import.meta as any)?.env?.[name];
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readEnvBool(name: string, fallback: boolean): boolean {
+  try {
+    const raw = (import.meta as any)?.env?.[name];
+    if (raw === undefined || raw === '') return fallback;
+    const s = String(raw).toLowerCase().trim();
+    if (['1', 'true', 'yes', 'on'].includes(s)) return true;
+    if (['0', 'false', 'no', 'off'].includes(s)) return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getFormLimits(): FormLimits {
+  return {
+    maxDslBytes: readEnvNumber('VITE_MPC_FORM_MAX_DSL_BYTES', 256_000),
+    maxDataBytes: readEnvNumber('VITE_MPC_FORM_MAX_DATA_BYTES', 64_000),
+    maxActorBytes: readEnvNumber('VITE_MPC_FORM_MAX_ACTOR_BYTES', 32_000),
+  };
+}
+
 type EnvelopeDiagnostic = {
   code: string;
   message: string;
@@ -77,7 +118,7 @@ async function initPyodide() {
   if (pyodide) return pyodide;
   
   pyodide = await loadPyodide({
-    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/'
+    indexURL: PYODIDE_CDN,
   });
   
   await pyodide.runPythonAsync(`
@@ -109,45 +150,94 @@ function safeDeleteGlobal(py: PyodideInterface, name: string) {
   }
 }
 
+/** Fallback when `/mpc/manifest.json` is missing or filtering yields nothing. */
+const FALLBACK_REQUIRED_FILES: string[] = [
+  '__init__.py',
+  'kernel/__init__.py',
+  'kernel/ast/__init__.py',
+  'kernel/ast/models.py',
+  'kernel/ast/normalizer.py',
+  'kernel/canonical/__init__.py',
+  'kernel/canonical/hash.py',
+  'kernel/canonical/ordering.py',
+  'kernel/canonical/serializer.py',
+  'kernel/contracts/serialization.py',
+  'kernel/errors/__init__.py',
+  'kernel/errors/exceptions.py',
+  'kernel/errors/registry.py',
+  'kernel/meta/__init__.py',
+  'kernel/meta/diff.py',
+  'kernel/meta/models.py',
+  'kernel/parser/__init__.py',
+  'kernel/parser/base.py',
+  'kernel/parser/dsl_frontend.py',
+  'kernel/parser/grammar.lark',
+  'kernel/parser/json_frontend.py',
+  'kernel/parser/yaml_frontend.py',
+  'kernel/contracts/__init__.py',
+  'kernel/contracts/models.py',
+  'tooling/__init__.py',
+  'tooling/validator/__init__.py',
+  'tooling/validator/structural.py',
+  'tooling/validator/semantic.py',
+  'tooling/uischema/__init__.py',
+  'tooling/uischema/generator.py',
+  'features/__init__.py',
+  'features/expr/__init__.py',
+  'features/expr/engine.py',
+  'features/expr/ir.py',
+  'features/expr/compiler.py',
+  'features/acl/__init__.py',
+  'features/acl/engine.py',
+  'features/workflow/__init__.py',
+  'features/workflow/fsm.py',
+  'features/form/__init__.py',
+  'features/form/engine.py',
+  'features/form/kinds.py',
+];
+
+function shouldIncludeRuntimePy(relPath: string): boolean {
+  if (!relPath.endsWith('.py')) return false;
+  if (relPath.includes('__pycache__')) return false;
+  const patterns = [
+    /^__init__\.py$/,
+    /^kernel\//,
+    /^tooling\/__init__\.py$/,
+    /^tooling\/validator\//,
+    /^tooling\/uischema\//,
+    /^features\/__init__\.py$/,
+    /^features\/(workflow|form|expr|acl)\//,
+  ];
+  return patterns.some((re) => re.test(relPath));
+}
+
+/** Lark grammar is required by the DSL parser; not a .py file. */
+function shouldIncludeRuntimeFile(relPath: string): boolean {
+  if (relPath.includes('__pycache__')) return false;
+  if (relPath === 'kernel/parser/grammar.lark') return true;
+  return shouldIncludeRuntimePy(relPath);
+}
+
+async function resolveRuntimeFileList(): Promise<string[]> {
+  try {
+    const response = await fetch('/mpc/manifest.json');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const manifest: unknown = await response.json();
+    if (!Array.isArray(manifest)) throw new Error('manifest.json must be a JSON array');
+    const filtered = manifest
+      .filter((p): p is string => typeof p === 'string' && shouldIncludeRuntimeFile(p))
+      .sort((a, b) => a.localeCompare(b));
+    if (filtered.length === 0) throw new Error('filtered manifest is empty');
+    return filtered;
+  } catch {
+    return FALLBACK_REQUIRED_FILES.slice();
+  }
+}
+
 async function loadMPCLibrary(py: PyodideInterface) {
   if (libraryLoaded) return;
-  
-  // In a real production app, we would fetch a zip or use a recursive fetcher.
-  // For this standalone Studio, we'll implement a simple recursive module loader.
-  
-  const requiredFiles = [
-    '__init__.py',
-    'kernel/__init__.py',
-    'kernel/ast/__init__.py',
-    'kernel/ast/models.py',
-    'kernel/ast/normalizer.py',
-    'kernel/canonical/__init__.py',
-    'kernel/canonical/hash.py',
-    'kernel/canonical/ordering.py',
-    'kernel/canonical/serializer.py',
-    'kernel/contracts/serialization.py',
-    'kernel/errors/__init__.py',
-    'kernel/errors/exceptions.py',
-    'kernel/errors/registry.py',
-    'kernel/meta/__init__.py',
-    'kernel/meta/diff.py',
-    'kernel/meta/models.py',
-    'kernel/parser/__init__.py',
-    'kernel/parser/base.py',
-    'kernel/parser/dsl_frontend.py',
-    'kernel/parser/grammar.lark',
-    'kernel/parser/json_frontend.py',
-    'kernel/parser/yaml_frontend.py',
-    'kernel/contracts/__init__.py',
-    'kernel/contracts/models.py',
-    'tooling/__init__.py',
-    'tooling/validator/__init__.py',
-    'tooling/validator/structural.py',
-    'tooling/validator/semantic.py',
-    'features/__init__.py',
-    'features/workflow/__init__.py',
-    'features/workflow/fsm.py',
-  ];
+
+  const requiredFiles = await resolveRuntimeFileList();
 
   const failed: string[] = [];
 
@@ -234,7 +324,8 @@ def to_dict(node):
         "kind": node.kind,
         "id": node.id,
         "name": node.name,
-        "properties": node.properties,
+        # ASTNode.properties is MappingProxyType in canonical AST; convert for JSON.
+        "properties": dict(getattr(node, "properties", {}) or {}),
     }
 
 def hash_ast(ast):
@@ -343,6 +434,7 @@ json.dumps({"items": items})
             if (item.kind === 'Workflow') return ['preview_mermaid', 'simulate_workflow', 'diagnostics'];
             if (item.kind === 'Policy') return ['preview_json', 'simulate_policy', 'diagnostics'];
             if (item.kind === 'ACL' || item.kind === 'AccessControl') return ['preview_json', 'simulate_acl', 'diagnostics'];
+            if (item.kind === 'FormDef') return ['preview_json', 'diagnostics'];
             if (item.kind === 'Overlay' || item.kind === 'OverlayRule' || item.kind === 'Projection' || item.kind === 'ViewOverlay') {
               return ['preview_json', 'diagnostics'];
             }
@@ -432,7 +524,7 @@ else:
             "kind": node_kind,
             "definitionId": node_id,
             "renderer": "json",
-            "content": json.dumps(props if props is not None else {}, indent=2),
+            "content": json.dumps(dict(props) if props is not None else {}, indent=2),
             "diagnostics": []
         })
 result_json
@@ -1258,6 +1350,164 @@ json.dumps({
         self.postMessage({ id, type: 'UISCHEMA_RESULT', payload: JSON.parse(result) });
       } finally {
         safeDeleteGlobal(py, 'DSL');
+      }
+    } else if (type === 'GENERATE_FORM_PACKAGE') {
+      const {
+        dsl,
+        formId,
+        data,
+        actorRoles,
+        actorAttrs,
+      } = payload as {
+        dsl: string;
+        formId: string;
+        data?: Record<string, unknown>;
+        actorRoles?: string[];
+        actorAttrs?: Record<string, unknown>;
+      };
+
+      const formLimits = getFormLimits();
+      const dslBytes = estimateBytes(dsl ?? '');
+      const dataBytes = estimateBytes(data ?? {});
+      const actorBytes = estimateBytes({ actorRoles: actorRoles ?? [], actorAttrs: actorAttrs ?? {} });
+      const limitDiagnostics: EnvelopeDiagnostic[] = [];
+      if (dslBytes > formLimits.maxDslBytes) {
+        limitDiagnostics.push({
+          code: 'E_FORM_DSL_TOO_LARGE',
+          message: `DSL payload exceeds maxDslBytes (${dslBytes} > ${formLimits.maxDslBytes}).`,
+          severity: 'error',
+        });
+      }
+      if (dataBytes > formLimits.maxDataBytes) {
+        limitDiagnostics.push({
+          code: 'E_FORM_DATA_TOO_LARGE',
+          message: `Form data exceeds maxDataBytes (${dataBytes} > ${formLimits.maxDataBytes}).`,
+          severity: 'error',
+        });
+      }
+      if (actorBytes > formLimits.maxActorBytes) {
+        limitDiagnostics.push({
+          code: 'E_FORM_ACTOR_TOO_LARGE',
+          message: `Actor context exceeds maxActorBytes (${actorBytes} > ${formLimits.maxActorBytes}).`,
+          severity: 'error',
+        });
+      }
+      if (limitDiagnostics.length > 0) {
+        postEnvelope(
+          id,
+          'FORM_PACKAGE',
+          requestId,
+          {
+            jsonSchema: {},
+            uiSchema: {},
+            fieldState: [],
+            validation: {
+              valid: false,
+              errors: [
+                {
+                  field_id: '__limits__',
+                  message: 'Input limits exceeded. Reduce DSL/data payload size and retry.',
+                  expr: null,
+                },
+              ],
+            },
+          },
+          startedAt,
+          limitDiagnostics,
+        );
+        return;
+      }
+
+      py.globals.set('_form_dsl_input', dsl);
+      py.globals.set('_form_id', formId);
+      py.globals.set('_form_data', JSON.stringify(data ?? {}));
+      py.globals.set('_actor_roles', JSON.stringify(actorRoles ?? []));
+      py.globals.set('_actor_attrs', JSON.stringify(actorAttrs ?? {}));
+      py.globals.set('_form_fail_open', readEnvBool('VITE_MPC_FORM_FAIL_OPEN', true));
+
+      const emptyFormPackage = {
+        jsonSchema: {} as Record<string, unknown>,
+        uiSchema: {} as Record<string, unknown>,
+        fieldState: [] as unknown[],
+        validation: {
+          valid: false,
+          errors: [
+            {
+              field_id: '__form__',
+              message: 'Form package generation failed.',
+              expr: null as string | null,
+            },
+          ],
+        },
+      };
+
+      try {
+        const timeoutMs = readEnvNumber('VITE_MPC_FORM_PACKAGE_TIMEOUT_MS', 30_000);
+        const raw = await Promise.race([
+          py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.features.form.engine import FormEngine
+from mpc.features.form.kinds import FORM_KINDS
+from mpc.kernel.meta.models import DomainMeta
+
+ast = parse(_form_dsl_input)
+meta = DomainMeta(kinds=FORM_KINDS)
+engine = FormEngine(ast=ast, meta=meta)
+package = engine.get_form_package(
+    _form_id,
+    json.loads(_form_data),
+    actor_roles=json.loads(_actor_roles),
+    actor_attrs=json.loads(_actor_attrs),
+    fail_open=_form_fail_open,
+)
+
+json.dumps({
+  "jsonSchema": package.jsonSchema,
+  "uiSchema": package.uiSchema,
+  "fieldState": package.fieldState,
+  "validation": package.validation,
+})
+          `),
+          new Promise<string>((_, reject) => {
+            setTimeout(() => reject(new Error('E_FORM_TIMEOUT')), timeoutMs);
+          }),
+        ]);
+        postEnvelope(id, 'FORM_PACKAGE', requestId, JSON.parse(raw as string), startedAt);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === 'E_FORM_TIMEOUT') {
+          postEnvelope(id, 'FORM_PACKAGE', requestId, emptyFormPackage, startedAt, [
+            {
+              code: 'E_FORM_TIMEOUT',
+              message: `Form package generation exceeded timeout (${readEnvNumber('VITE_MPC_FORM_PACKAGE_TIMEOUT_MS', 30_000)} ms).`,
+              severity: 'error',
+            },
+          ]);
+        } else {
+          const detail = msg.length > 2000 ? `${msg.slice(0, 2000)}…` : msg;
+          postEnvelope(
+            id,
+            'FORM_PACKAGE',
+            requestId,
+            {
+              ...emptyFormPackage,
+              validation: {
+                valid: false,
+                errors: [{ field_id: '__form__', message: detail, expr: null }],
+              },
+            },
+            startedAt,
+            [{ code: 'E_FORM_EXPR_FAILED', message: detail, severity: 'error' }],
+          );
+        }
+      } finally {
+        safeDeleteGlobal(py, '_form_dsl_input');
+        safeDeleteGlobal(py, '_form_id');
+        safeDeleteGlobal(py, '_form_data');
+        safeDeleteGlobal(py, '_actor_roles');
+        safeDeleteGlobal(py, '_actor_attrs');
+        safeDeleteGlobal(py, '_form_fail_open');
       }
     }
   } catch (err: unknown) {

@@ -1,0 +1,30 @@
+{
+  "contractVersion": "2.0.0",
+  "requestId": "req-form-package",
+  "timestamp": "2026-03-19T14:22:00.000Z",
+  "type": "FORM_PACKAGE",
+  "payload": {
+    "jsonSchema": {
+      "type": "object",
+      "title": "demo",
+      "x-form-id": "demo",
+      "properties": {}
+    },
+    "uiSchema": {
+      "ui:order": []
+    },
+    "fieldState": [
+      {
+        "field_id": "email",
+        "visible": true,
+        "readonly": false
+      }
+    ],
+    "validation": {
+      "valid": true,
+      "errors": []
+    }
+  },
+  "diagnostics": [],
+  "durationMs": 12
+}

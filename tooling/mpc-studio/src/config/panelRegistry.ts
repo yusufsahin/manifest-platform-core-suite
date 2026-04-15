@@ -54,6 +54,14 @@ export const panelRegistry: PanelRegistryItem[] = [
     matchCapabilities: ['preview_json'],
     matchKinds: ['Overlay', 'OverlayRule', 'Projection', 'ViewOverlay'],
   },
+  {
+    id: 'form-preview',
+    label: 'Form Preview',
+    group: 'Runtime',
+    icon: 'Layers',
+    matchCapabilities: ['preview_json'],
+    matchKinds: ['FormDef'],
+  },
 ];
 
 export function supportsPanel(definition: DefinitionDescriptor | undefined, panelId: string): boolean {

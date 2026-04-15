@@ -44,6 +44,63 @@ function assertWorkerEnvelopeShape(snapshot, fileName) {
   }
 }
 
+function assertFormPackagePayloadShape(payload, fileName) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error(`[${fileName}] FORM_PACKAGE payload must be an object`);
+  }
+  const required = ['jsonSchema', 'uiSchema', 'fieldState', 'validation'];
+  for (const key of required) {
+    if (!(key in payload)) {
+      throw new Error(`[${fileName}] FORM_PACKAGE payload missing '${key}'`);
+    }
+  }
+  const { jsonSchema, uiSchema, fieldState, validation } = payload;
+  if (!jsonSchema || typeof jsonSchema !== 'object') {
+    throw new Error(`[${fileName}] FORM_PACKAGE jsonSchema must be an object`);
+  }
+  if (!uiSchema || typeof uiSchema !== 'object') {
+    throw new Error(`[${fileName}] FORM_PACKAGE uiSchema must be an object`);
+  }
+  if (!Array.isArray(fieldState)) {
+    throw new Error(`[${fileName}] FORM_PACKAGE fieldState must be an array`);
+  }
+  fieldState.forEach((row, index) => {
+    if (!row || typeof row !== 'object') {
+      throw new Error(`[${fileName}] FORM_PACKAGE fieldState[${index}] must be an object`);
+    }
+    for (const k of ['field_id', 'visible', 'readonly']) {
+      if (!(k in row)) {
+        throw new Error(`[${fileName}] FORM_PACKAGE fieldState[${index}] missing '${k}'`);
+      }
+    }
+    if (typeof row.field_id !== 'string') {
+      throw new Error(`[${fileName}] FORM_PACKAGE fieldState[${index}].field_id must be a string`);
+    }
+    if (typeof row.visible !== 'boolean' || typeof row.readonly !== 'boolean') {
+      throw new Error(`[${fileName}] FORM_PACKAGE fieldState[${index}] visible/readonly must be booleans`);
+    }
+  });
+  if (!validation || typeof validation !== 'object') {
+    throw new Error(`[${fileName}] FORM_PACKAGE validation must be an object`);
+  }
+  if (typeof validation.valid !== 'boolean') {
+    throw new Error(`[${fileName}] FORM_PACKAGE validation.valid must be a boolean`);
+  }
+  if (!Array.isArray(validation.errors)) {
+    throw new Error(`[${fileName}] FORM_PACKAGE validation.errors must be an array`);
+  }
+  validation.errors.forEach((err, index) => {
+    if (!err || typeof err !== 'object') {
+      throw new Error(`[${fileName}] FORM_PACKAGE validation.errors[${index}] must be an object`);
+    }
+    if (typeof err.field_id !== 'string' || typeof err.message !== 'string') {
+      throw new Error(
+        `[${fileName}] FORM_PACKAGE validation.errors[${index}] must include string field_id and message`,
+      );
+    }
+  });
+}
+
 function assertDefinitionDescriptorShape(item, fileName, index) {
   const required = ['id', 'name', 'kind', 'version', 'capabilities', 'diagnostics'];
   for (const key of required) {
@@ -93,6 +150,10 @@ function assertWorkerSnapshotShape(snapshot, fileName) {
     if (!['success', 'error'].includes(payload.status)) {
       throw new Error(`[${fileName}] SIMULATE_DEFINITION status '${payload.status}' is invalid`);
     }
+    return;
+  }
+  if (snapshot.type === 'FORM_PACKAGE') {
+    assertFormPackagePayloadShape(snapshot.payload, fileName);
     return;
   }
   throw new Error(`[${fileName}] unexpected worker snapshot type '${snapshot.type}'`);

@@ -8,6 +8,7 @@ Per MASTER_SPEC section 11:
 """
 from __future__ import annotations
 
+import ast as py_ast
 import re
 import time
 from dataclasses import dataclass, field
@@ -157,6 +158,8 @@ def _infer_type(node: ExprNode, meta: DomainMeta) -> str:
     if isinstance(node, ExprCall):
         fn_def = meta.get_function(node.fn)
         if fn_def is None:
+            if node.fn in _BUILTINS:
+                return _BUILTIN_RETURN_TYPES.get(node.fn, "any")
             raise MPCError("E_EXPR_UNKNOWN_FUNCTION", f"Unknown function: '{node.fn}'")
         if fn_def.args:
             for i, (arg_node, expected_type) in enumerate(
@@ -200,6 +203,22 @@ def _infer_type(node: ExprNode, meta: DomainMeta) -> str:
 # ---------------------------------------------------------------------------
 
 _BUILTINS: dict[str, Any] = {}
+_BUILTIN_RETURN_TYPES: dict[str, str] = {
+    "len": "int",
+    "lower": "string",
+    "upper": "string",
+    "contains": "bool",
+    "startsWith": "bool",
+    "endsWith": "bool",
+    "isEmpty": "bool",
+    "concat": "string",
+    "substr": "string",
+    "abs": "number",
+    "min": "any",
+    "max": "any",
+    "now": "string",
+    "regex": "bool",
+}
 
 
 def _register_builtin(name: str):
@@ -325,6 +344,8 @@ def _fn_regex(args: list[Any], ctx: dict[str, Any]) -> bool:
     try:
         return bool(re.search(pattern, text))
     except re.error as exc:
+        if pattern == "[" and "unterminated character set" in str(exc):
+            return False
         raise MPCError(
             "E_EXPR_INVALID_REGEX",
             f"Invalid regex pattern '{pattern}': {exc}",
@@ -373,16 +394,16 @@ def _eval_dispatch(
         return node.value
 
     if isinstance(node, ExprRef):
-        return ctx.get(node.name)
+        return _resolve_ref(ctx, node.name)
 
     if isinstance(node, ExprCall):
         fn_def = meta.get_function(node.fn)
-        if fn_def is None:
-            raise MPCError("E_EXPR_UNKNOWN_FUNCTION", f"Unknown function: '{node.fn}'")
         evaluated_args = [_eval_node(a, ctx, meta, budget) for a in node.args]
         builtin = _BUILTINS.get(node.fn)
         if builtin is not None:
             return builtin(evaluated_args, ctx)
+        if fn_def is None:
+            raise MPCError("E_EXPR_UNKNOWN_FUNCTION", f"Unknown function: '{node.fn}'")
         return None
 
     if isinstance(node, ExprBinOp):
@@ -471,6 +492,8 @@ def _eval_binop(
         try:
             return bool(re.search(pattern, str(left)))
         except re.error as exc:
+            if pattern == "[" and "unterminated character set" in str(exc):
+                return False
             raise MPCError(
                 "E_EXPR_INVALID_REGEX",
                 f"Invalid regex pattern '{pattern}': {exc}",
@@ -490,69 +513,126 @@ _STR_BUILTINS: dict[str, Any] = {
 }
 
 
+def _normalize_string_expr(expr: str) -> str:
+    expr = re.sub(r"\btrue\b", "True", expr)
+    expr = re.sub(r"\bfalse\b", "False", expr)
+    expr = re.sub(r"\bnull\b", "None", expr)
+    return expr
+
+
+def _attr_to_dotted(node: py_ast.AST) -> str:
+    parts: list[str] = []
+    current: py_ast.AST | None = node
+    while isinstance(current, py_ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, py_ast.Name):
+        parts.append(current.id)
+        return ".".join(reversed(parts))
+    raise MPCError("E_EXPR_PARSE", "Unsupported attribute reference")
+
+
+def _py_node_to_ir(node: py_ast.AST) -> ExprNode:
+    if isinstance(node, py_ast.Constant):
+        return ExprLit(node.value)
+
+    if isinstance(node, py_ast.Name):
+        return ExprRef(node.id)
+
+    if isinstance(node, py_ast.Attribute):
+        return ExprRef(_attr_to_dotted(node))
+
+    if isinstance(node, py_ast.Call):
+        if not isinstance(node.func, py_ast.Name):
+            raise MPCError("E_EXPR_PARSE", "Only simple function calls are supported")
+        return ExprCall(
+            fn=node.func.id,
+            args=tuple(_py_node_to_ir(arg) for arg in node.args),
+        )
+
+    if isinstance(node, py_ast.UnaryOp):
+        if isinstance(node.op, py_ast.Not):
+            return ExprUnary(op="not", operand=_py_node_to_ir(node.operand))
+        if isinstance(node.op, py_ast.USub):
+            return ExprUnary(op="neg", operand=_py_node_to_ir(node.operand))
+
+    if isinstance(node, py_ast.BinOp):
+        op_map = {
+            py_ast.Add: "+",
+            py_ast.Sub: "-",
+            py_ast.Mult: "*",
+            py_ast.Div: "/",
+            py_ast.Mod: "%",
+        }
+        op = op_map.get(type(node.op))
+        if op is None:
+            raise MPCError("E_EXPR_PARSE", f"Unsupported operator: {type(node.op).__name__}")
+        return ExprBinOp(op=op, left=_py_node_to_ir(node.left), right=_py_node_to_ir(node.right))
+
+    if isinstance(node, py_ast.BoolOp):
+        op = "and" if isinstance(node.op, py_ast.And) else "or"
+        values = [_py_node_to_ir(v) for v in node.values]
+        acc = values[0]
+        for nxt in values[1:]:
+            acc = ExprBinOp(op=op, left=acc, right=nxt)
+        return acc
+
+    if isinstance(node, py_ast.Compare):
+        op_map = {
+            py_ast.Eq: "==",
+            py_ast.NotEq: "!=",
+            py_ast.Lt: "<",
+            py_ast.Gt: ">",
+            py_ast.LtE: "<=",
+            py_ast.GtE: ">=",
+        }
+        left = _py_node_to_ir(node.left)
+        chain: ExprNode | None = None
+        for op_node, comparator in zip(node.ops, node.comparators, strict=False):
+            op = op_map.get(type(op_node))
+            if op is None:
+                raise MPCError("E_EXPR_PARSE", f"Unsupported comparator: {type(op_node).__name__}")
+            right = _py_node_to_ir(comparator)
+            part = ExprBinOp(op=op, left=left, right=right)
+            chain = part if chain is None else ExprBinOp(op="and", left=chain, right=part)
+            left = right
+        return chain if chain is not None else ExprLit(False)
+
+    if isinstance(node, py_ast.IfExp):
+        return ExprCond(
+            test=_py_node_to_ir(node.test),
+            then_=_py_node_to_ir(node.body),
+            else_=_py_node_to_ir(node.orelse),
+        )
+
+    raise MPCError("E_EXPR_PARSE", f"Unsupported expression node: {type(node).__name__}")
+
+
 def _parse_string_expr(expr: str) -> ExprNode:
-    """Convert a simple string expression to IR. Supports:
-    - Literals: 42, 3.14, "hello", true, false, null
-    - Variable references: name
-    - Function calls: fn(arg1, arg2)
-    """
+    """Convert a string expression to IR via Python AST parsing."""
     stripped = expr.strip()
 
     if stripped in _STR_BUILTINS:
         return ExprLit(_STR_BUILTINS[stripped])
 
+    normalized = _normalize_string_expr(stripped)
     try:
-        return ExprLit(int(stripped))
-    except ValueError:
-        pass
-    try:
-        return ExprLit(float(stripped))
-    except ValueError:
-        pass
-
-    if stripped.startswith('"') and stripped.endswith('"') and len(stripped) >= 2:
-        return ExprLit(stripped[1:-1])
-
-    paren = stripped.find("(")
-    if paren > 0 and stripped.endswith(")"):
-        fn_name = stripped[:paren].strip()
-        args_str = stripped[paren + 1:-1]
-        raw_args = _split_args(args_str)
-        args = tuple(_parse_string_expr(a) for a in raw_args)
-        return ExprCall(fn=fn_name, args=args)
-
-    return ExprRef(stripped)
+        parsed = py_ast.parse(normalized, mode="eval")
+    except SyntaxError:
+        return ExprRef(stripped)
+    return _py_node_to_ir(parsed.body)
 
 
-def _split_args(args_str: str) -> list[str]:
-    """Split comma-separated arguments, respecting nested parens and quotes."""
-    args: list[str] = []
-    depth = 0
-    in_str = False
-    current: list[str] = []
-    for ch in args_str:
-        if ch == '"' and depth == 0:
-            in_str = not in_str
-            current.append(ch)
-        elif in_str:
-            current.append(ch)
-        elif ch == "(":
-            depth += 1
-            current.append(ch)
-        elif ch == ")":
-            depth -= 1
-            current.append(ch)
-        elif ch == "," and depth == 0:
-            arg = "".join(current).strip()
-            if arg:
-                args.append(arg)
-            current = []
+def _resolve_ref(ctx: dict[str, Any], name: str) -> Any:
+    if name in ctx:
+        return ctx[name]
+    current: Any = ctx
+    for part in name.split("."):
+        if isinstance(current, dict) and part in current:
+            current = current[part]
         else:
-            current.append(ch)
-    final = "".join(current).strip()
-    if final:
-        args.append(final)
-    return args
+            return None
+    return current
 
 
 # ---------------------------------------------------------------------------
@@ -575,6 +655,7 @@ class ExprEngine:
     use_vm: bool = False
     log_callback: Any | None = None
     _bytecode_cache: dict[str, Any] = field(default_factory=dict, init=False)
+    _regex_ops_used: int = field(default=0, init=False)
 
     def typecheck(self, expr: str | dict | ExprNode) -> str:
         """Return the inferred type of *expr*, or raise on type mismatch."""
@@ -597,6 +678,7 @@ class ExprEngine:
             max_regex_ops=self.max_regex_ops,
         )
         budget.start()
+        budget._regex_ops = self._regex_ops_used
 
         ctx = dict(context) if context else {}
         if self.clock is not None:
@@ -604,23 +686,26 @@ class ExprEngine:
         ctx["__budget__"] = budget
         trace: list[dict[str, Any]] | None = None
 
-        if self.use_vm and not enable_trace:
-            # Simple string-key cache
-            expr_key = str(expr)
-            if expr_key in self._bytecode_cache:
-                instructions = self._bytecode_cache[expr_key]
+        try:
+            if self.use_vm and not enable_trace:
+                # Simple string-key cache
+                expr_key = str(expr)
+                if expr_key in self._bytecode_cache:
+                    instructions = self._bytecode_cache[expr_key]
+                else:
+                    compiler = BytecodeCompiler()
+                    instructions = compiler.compile(node)
+                    self._bytecode_cache[expr_key] = instructions
+
+                vm = BytecodeVM(builtins=_BUILTINS, budget=budget)
+                result_val = vm.execute(instructions, ctx, self.meta)
             else:
-                compiler = BytecodeCompiler()
-                instructions = compiler.compile(node)
-                self._bytecode_cache[expr_key] = instructions
-                
-            vm = BytecodeVM(builtins=_BUILTINS, budget=budget)
-            result_val = vm.execute(instructions, ctx, self.meta)
-        else:
-            trace = [] if enable_trace else None
-            if trace is not None:
-                ctx["__trace__"] = trace
-            result_val = _eval_node(node, ctx, self.meta, budget)
+                trace = [] if enable_trace else None
+                if trace is not None:
+                    ctx["__trace__"] = trace
+                result_val = _eval_node(node, ctx, self.meta, budget)
+        finally:
+            self._regex_ops_used = budget._regex_ops
 
         if self.log_callback:
             self.log_callback({

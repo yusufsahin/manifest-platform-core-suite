@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 from mpc.features.workflow.fsm import WorkflowEngine, FireResult
-from mpc.kernel.contracts.models import Error
+from mpc.kernel.contracts.models import Decision, Error, Reason
 
 @dataclass
 class ManagedActivation:
@@ -16,8 +16,15 @@ class ManagedActivation:
     # quorum_spec: {role: required_count}
     quorum_spec: Dict[str, int] = field(default_factory=dict)
     
-    def approve(self, actor_id: str, role: str) -> None:
-        """Record a unique approval from a specific actor and role."""
+    def approve(self, actor_id: str, role: str | None = None) -> None:
+        """Record an approval.
+
+        Backward-compatible forms:
+        - approve("user1", "Security")
+        - approve("Security")  # uses role string as actor id as well
+        """
+        if role is None:
+            role = actor_id
         self.signed_approvals[actor_id] = role
             
     def is_quorum_met(self) -> bool:
@@ -40,7 +47,7 @@ class ManagedActivation:
             return FireResult(
                 new_state=self.engine.current_state,
                 decision=Decision(allow=False, reasons=[Reason(code="E_GOV_QUORUM_INCOMPLETE", summary="Quorum requirements not met")]),
-                errors=[Error(code="E_GOV_QUORUM_INCOMPLETE", message=f"Quorum check failed. Requirements: {self.quorum_spec}")]
+                errors=[Error(code="E_GOV_QUORUM_INCOMPLETE", message=f"Quorum check failed. Requirements: {self.quorum_spec}", severity="error")]
             )
 
         actor_roles = list(set(self.signed_approvals.values()))
@@ -52,7 +59,7 @@ class ManagedActivation:
         return FireResult(
             new_state=self.engine.current_state,
             decision=Decision(allow=False),
-            errors=[Error(code="E_GOV_STATE_INVALID", message="Invalid state for activation")]
+            errors=[Error(code="E_GOV_STATE_INVALID", message="Invalid state for activation", severity="error")]
         )
 
     @property

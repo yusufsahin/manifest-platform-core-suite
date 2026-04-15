@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
+import { registerMpcDslLanguage } from '../engine/mpc-dsl-language';
 
 interface ValidationError {
   code: string;
@@ -62,8 +63,8 @@ const ManifestEditor = ({ dsl, onChange, fileName, errors = [] }: ManifestEditor
       <div className="flex-1">
         <Editor
           height="100%"
-          defaultLanguage="python"
-          theme="vs-dark"
+          defaultLanguage="mpc-dsl"
+          theme="mpc-dark"
           value={dsl}
           onChange={(value) => onChange(value || '')}
           onMount={handleEditorDidMount}
@@ -79,14 +80,7 @@ const ManifestEditor = ({ dsl, onChange, fileName, errors = [] }: ManifestEditor
             padding: { top: 20 },
           }}
           beforeMount={(monaco) => {
-            monaco.editor.defineTheme('mpc-theme', {
-              base: 'vs-dark',
-              inherit: true,
-              rules: [],
-              colors: {
-                'editor.background': '#12141c00',
-              }
-            });
+            registerMpcDslLanguage(monaco);
           }}
         />
       </div>

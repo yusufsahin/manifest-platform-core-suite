@@ -1,7 +1,7 @@
 import { EyeOff, Play } from 'lucide-react';
 import { useState } from 'react';
 
-const RedactionPreview = ({ dsl: _dsl, onRedact }: { dsl: string, onRedact: (data: any) => Promise<any> }) => {
+const RedactionPreview = ({ onRedact }: { dsl: string; onRedact: (data: any) => Promise<any> }) => {
   const [sampleData, setSampleData] = useState('{\n  "name": "John Doe",\n  "email": "john@example.com",\n  "salary": 120000,\n  "ssn": "123-456-7890"\n}');
   const [redactedData, setRedactedData] = useState<any>(null);
 

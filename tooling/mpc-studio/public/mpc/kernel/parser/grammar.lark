@@ -21,7 +21,7 @@ directive: "@schema" INT                -> schema_dir
          | "@name" ESCAPED_STRING       -> name_dir
          | "@version" ESCAPED_STRING    -> version_dir
 
-definition: "def" IDENT IDENT [ESCAPED_STRING] "{" def_body* "}"
+definition: "def" IDENT IDENT [ESCAPED_STRING] "{" [def_body (","? def_body)* ","?] "}"
 
 def_body: property        -> body_prop
         | definition      -> body_def

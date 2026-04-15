@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from mpc.kernel.ast.models import ManifestAST
 from mpc.kernel.meta.models import DomainMeta, FunctionDef
 
 
@@ -114,7 +115,7 @@ def detect_drift(ast: ManifestAST, meta: DomainMeta) -> list[str]:
             continue
             
         kind_def = meta_kinds[node.kind]
-        allowed_props = set(kind_def.required_props) | set(kind_def.optional_props)
+        allowed_props = set(kind_def.required_props) | set(kind_def.optional_props) | set(kind_def.allowed_types)
         # Assuming for now that any property not in 'allowed_props' is a drift
         # (even if strict validation isn't enforced in the validator)
         for prop in node.properties:

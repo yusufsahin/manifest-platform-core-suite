@@ -27,9 +27,16 @@ from mpc.kernel.errors.exceptions import MPCBudgetError, MPCError
 from mpc.kernel.errors.registry import validate_all_codes
 from mpc.features.expr import ExprEngine, typecheck as expr_typecheck, evaluate as expr_evaluate
 from mpc.kernel.meta.models import DomainMeta, FunctionDef
+from mpc.kernel.meta.models import KindDef
+from mpc.features.form.engine import FormEngine
+from mpc.features.form.kinds import FORM_KINDS
 from mpc.features.overlay.engine import OverlayEngine
 from mpc.features.policy.engine import PolicyEngine
+from mpc.features.redaction.engine import RedactionEngine, RedactionConfig
+from mpc.features.routing.canary import CanaryRouter
+from mpc.tooling.validator.structural import validate_structural
 from mpc.tooling.validator import validate_semantic
+from mpc.tooling.imports.resolver import ImportResolver
 from mpc.features.workflow import GuardPort
 from mpc.features.workflow.fsm import WorkflowEngine
 
@@ -105,11 +112,15 @@ class ConformanceRunner:
         self._handlers["expr"] = ConformanceRunner._handle_expr
         self._handlers["acl"] = ConformanceRunner._handle_acl
         self._handlers["policy"] = ConformanceRunner._handle_policy
+        self._handlers["form"] = ConformanceRunner._handle_form
         self._handlers["compose"] = ConformanceRunner._handle_compose
         self._handlers["evaluate_integration"] = ConformanceRunner._handle_evaluate_integration
         self._handlers["overlay"] = ConformanceRunner._handle_overlay
         self._handlers["governance"] = ConformanceRunner._handle_governance
         self._handlers["validator"] = ConformanceRunner._handle_validator
+        self._handlers["routing"] = ConformanceRunner._handle_routing
+        self._handlers["redaction"] = ConformanceRunner._handle_redaction
+        self._handlers["imports"] = ConformanceRunner._handle_imports
 
     def register_handler(self, category: str, handler: CategoryHandler) -> None:
         """Register a custom handler for *category* (e.g. ``"expr"``)."""
@@ -309,7 +320,14 @@ class ConformanceRunner:
             data, guard_port=guard_port, auth_port=None
         )
         event = data.get("event")
-        if event is None:
+        if data.get("timeout_check") is True:
+            engine.activate()
+            if isinstance(data.get("advance_ms"), (int, float)):
+                engine.state_entry_time -= float(data["advance_ms"]) / 1000.0
+            result = engine.check_timeouts(context=data.get("context") or {})
+            if result is None:
+                return {"allow": True, "reasons": [], "state": engine.current_state} if meta.get("include_state") else {"allow": True, "reasons": []}
+        elif event is None:
             errors = engine.validate()
             if errors:
                 e = errors[0]
@@ -321,12 +339,19 @@ class ConformanceRunner:
                 }
             }
             return {"allow": True, "reasons": []}
-        result = engine.fire(
-            str(event),
-            actor_roles=data.get("actor_roles") or data.get("actorRoles"),
-            actor_id=data.get("actor_id") or data.get("actorId"),
-            context=data.get("context") or {},
-        )
+        else:
+            events = event if isinstance(event, list) else [event]
+            result = None
+            for ev in events:
+                result = engine.fire(
+                    str(ev),
+                    actor_roles=data.get("actor_roles") or data.get("actorRoles"),
+                    actor_id=data.get("actor_id") or data.get("actorId"),
+                    context=data.get("context") or {},
+                )
+                if result.errors:
+                    break
+            assert result is not None
         if result.errors:
             e = result.errors[0]
             return {
@@ -340,6 +365,10 @@ class ConformanceRunner:
             "allow": result.decision.allow,
             "reasons": [{"code": r.code} for r in result.decision.reasons],
         }
+        if meta.get("include_state"):
+            out["state"] = result.new_state
+        if meta.get("include_actions") and result.actions_executed:
+            out["actions"] = list(result.actions_executed)
         return out
 
     def _handle_expr(self, ctx: FixtureContext) -> dict[str, Any]:
@@ -447,7 +476,8 @@ class ConformanceRunner:
             manifest_version="1",
             defs=defs,
         )
-        engine = ACLEngine(ast=ast)
+        role_hierarchy = data.get("role_hierarchy") if isinstance(data.get("role_hierarchy"), dict) else {}
+        engine = ACLEngine(ast=ast, role_hierarchy={str(k): set(v) for k, v in role_hierarchy.items() if isinstance(v, list)})
         result: ACLResult = engine.check(
             action,
             resource,
@@ -502,6 +532,56 @@ class ConformanceRunner:
         if result.intents:
             out["intents"] = [{"kind": i.kind, "target": i.target} for i in result.intents]
         return out
+
+    def _handle_form(self, ctx: FixtureContext) -> dict[str, Any]:
+        """Run form fixture: parse DSL, build FormEngine, return FormPackage (snake_case)."""
+        data = ctx.input_data
+        dsl = data.get("dsl")
+        form_id = data.get("form_id")
+        if not isinstance(dsl, str) or not dsl.strip():
+            return {
+                "error": {
+                    "code": "E_PARSE_SYNTAX",
+                    "message": "Missing 'dsl' in input",
+                    "severity": "error",
+                }
+            }
+        if not isinstance(form_id, str) or not form_id.strip():
+            return {
+                "error": {
+                    "code": "E_PARSE_SYNTAX",
+                    "message": "Missing 'form_id' in input",
+                    "severity": "error",
+                }
+            }
+
+        from mpc.kernel.parser import parse
+
+        ast = parse(dsl)
+        meta = DomainMeta(kinds=FORM_KINDS)
+        limits = ctx.limits
+        engine = FormEngine(
+            ast=ast,
+            meta=meta,
+            max_expr_steps=int(limits.get("maxExprSteps", 5000)),
+            max_expr_depth=int(limits.get("maxExprDepth", 50)),
+            max_eval_time_ms=float(limits.get("maxEvalTimeMs", 50.0)),
+            max_regex_ops=int(limits.get("maxRegexOps", 5000)),
+        )
+        pkg = engine.get_form_package(
+            form_id.strip(),
+            data.get("data") if isinstance(data.get("data"), dict) else {},
+            actor_roles=data.get("actor_roles") if isinstance(data.get("actor_roles"), list) else None,
+            actor_attrs=data.get("actor_attrs") if isinstance(data.get("actor_attrs"), dict) else None,
+            fail_open=bool(data.get("fail_open", True)),
+        )
+
+        return {
+            "json_schema": pkg.jsonSchema,
+            "ui_schema": pkg.uiSchema,
+            "field_state": pkg.fieldState,
+            "validation": pkg.validation,
+        }
 
     def _handle_compose(self, ctx: FixtureContext) -> dict[str, Any]:
         """Run compose fixture: build Decision list from input, compose with strategy."""
@@ -670,10 +750,11 @@ class ConformanceRunner:
         return {k: v for k, v in out.items() if v is not None}
 
     def _handle_validator(self, ctx: FixtureContext) -> dict[str, Any]:
-        """Run validator fixture: build AST from defs, run validate_semantic, return errors list."""
+        """Run validator fixture: build AST from defs, run structural (optional) + semantic validation."""
         data = ctx.input_data
         namespace = data.get("namespace", "test")
         raw_defs = data.get("defs") or []
+        meta_kinds = data.get("meta_kinds")
         defs: list[ASTNode] = []
         for d in raw_defs:
             defs.append(
@@ -686,7 +767,11 @@ class ConformanceRunner:
         ast = ManifestAST(
             schema_version=1, namespace=namespace, name="", manifest_version="1", defs=defs
         )
-        errors = validate_semantic(ast)
+        errors = []
+        if isinstance(meta_kinds, list) and meta_kinds:
+            meta = DomainMeta(kinds=[KindDef(name=str(k)) for k in meta_kinds])
+            errors.extend(validate_structural(ast, meta))
+        errors.extend(validate_semantic(ast))
         if errors:
             return {
                 "errors": [
@@ -743,6 +828,65 @@ class ConformanceRunner:
                     }
                 }
         return {"valid": True}
+
+    def _handle_routing(self, ctx: FixtureContext) -> dict[str, Any]:
+        """Run routing fixture: resolve stable/canary selection via CanaryRouter."""
+        data = ctx.input_data
+        stable = str(data.get("stable_hash", "stable"))
+        canary = str(data.get("canary_hash", "canary"))
+        weight = float(data.get("weight", 0.1))
+        segments = data.get("segments") if isinstance(data.get("segments"), dict) else {}
+        actor_id = data.get("actor_id")
+        attrs = data.get("attributes") if isinstance(data.get("attributes"), dict) else None
+        router = CanaryRouter(stable_hash=stable, canary_hash=canary, weight=weight, segments=segments)
+        return {"version": router.resolve_version(actor_id=actor_id, attributes=attrs)}
+
+    def _handle_redaction(self, ctx: FixtureContext) -> dict[str, Any]:
+        """Run redaction fixture: apply RedactionEngine to provided data."""
+        data = ctx.input_data
+        payload = data.get("data")
+        cfg = data.get("config") if isinstance(data.get("config"), dict) else {}
+        deny_keys = cfg.get("deny_keys")
+        deny_patterns = cfg.get("deny_patterns")
+        mask_value = cfg.get("mask_value", "***")
+        engine = RedactionEngine(
+            config=RedactionConfig(
+                deny_keys=frozenset(deny_keys) if isinstance(deny_keys, list) else RedactionConfig().deny_keys,
+                deny_patterns=list(deny_patterns) if isinstance(deny_patterns, list) else [],
+                mask_value=str(mask_value),
+            )
+        )
+        return {"data": engine.redact(payload)}
+
+    def _handle_imports(self, ctx: FixtureContext) -> dict[str, Any]:
+        """Run imports fixture: resolve Import defs with ImportResolver."""
+        data = ctx.input_data
+        manifests = data.get("manifests") if isinstance(data.get("manifests"), dict) else {}
+        base_dsl = data.get("dsl")
+        if not isinstance(base_dsl, str) or not base_dsl.strip():
+            return {
+                "error": {"code": "E_PARSE_SYNTAX", "message": "Missing 'dsl' in input", "severity": "error"}
+            }
+        from mpc.kernel.parser import parse
+
+        resolver = ImportResolver()
+        for name, dsl in manifests.items():
+            if isinstance(name, str) and isinstance(dsl, str):
+                versions = data.get("versions", {}) if isinstance(data.get("versions"), dict) else {}
+                resolver.register(
+                    name,
+                    parse(dsl),
+                    version=str(versions.get(name, "0.0.0")),
+                )
+        base_ast = parse(base_dsl)
+        res = resolver.resolve(base_ast)
+        if res.errors:
+            e = res.errors[0]
+            return {"error": {"code": e.code, "message": e.message, "severity": e.severity}}
+        return {
+            "resolved_imports": res.resolved_imports,
+            "definition_count": len(res.ast.defs),
+        }
 
 
 # ---------------------------------------------------------------------------

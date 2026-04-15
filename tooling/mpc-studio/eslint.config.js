@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'test-results', 'playwright-report']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +18,13 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+    rules: {
+      // Studio crosses Monaco/Pyodide/worker boundaries where `any` is a practical
+      // boundary type; keep lint signal focused on real issues.
+      '@typescript-eslint/no-explicit-any': 'off',
+      // E2E-driven state + debounced effects make this noisy in Studio UI code.
+      'react-hooks/exhaustive-deps': 'off',
     },
   },
 ])

@@ -32,6 +32,11 @@ const KNOWN_RUNTIME_ERROR_CODES = new Set([
   'ARTIFACT_NOT_FOUND',
   'TENANT_MISMATCH',
   'FORBIDDEN',
+  'E_FORM_ACTOR_TOO_LARGE',
+  'E_FORM_DATA_TOO_LARGE',
+  'E_FORM_DSL_TOO_LARGE',
+  'E_FORM_EXPR_FAILED',
+  'E_FORM_TIMEOUT',
 ]);
 
 class RemoteRuntimeError extends Error {
@@ -80,6 +85,7 @@ export class MPCEngine {
   private remoteFailures = 0;
   private circuitOpenedAt: number | null = null;
   private lastWorkerEnvelope: WorkerRuntimeMetrics | null = null;
+  private lastWorkerDiagnostics: DefinitionDiagnostic[] = [];
 
   constructor() {
     this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
@@ -133,6 +139,7 @@ export class MPCEngine {
         durationMs: value.durationMs,
         diagnosticCount: value.diagnostics?.length ?? 0,
       };
+      this.lastWorkerDiagnostics = Array.isArray(value.diagnostics) ? value.diagnostics : [];
       return value.payload;
     }
     return value as TPayload;
@@ -140,6 +147,10 @@ export class MPCEngine {
 
   getLastWorkerMetrics(): WorkerRuntimeMetrics | null {
     return this.lastWorkerEnvelope;
+  }
+
+  getLastWorkerDiagnostics(): DefinitionDiagnostic[] {
+    return this.lastWorkerDiagnostics.slice();
   }
 
   private runtimeMode(): 'local' | 'remote' {
@@ -540,6 +551,64 @@ export class MPCEngine {
       type: 'GENERATE_UISCHEMA',
       payload: { dsl }
     });
+  }
+
+  async generateFormPackage(input: {
+    dsl: string;
+    formId: string;
+    data?: Record<string, unknown>;
+    actorRoles?: string[];
+    actorAttrs?: Record<string, unknown>;
+    tenantId?: string;
+    artifactId?: string;
+    useTenantActiveManifest?: boolean;
+  }): Promise<any> {
+    if (this.runtimeMode() === 'remote' && !this.isCircuitOpen()) {
+      try {
+        const response = await this.postRemote<{
+          json_schema: unknown;
+          ui_schema: unknown;
+          field_state: unknown;
+          validation: unknown;
+        }>('/runtime/forms/package', {
+          tenant_id: input.tenantId,
+          source: this.buildRuntimeSource({
+            dsl: input.dsl,
+            artifactId: input.artifactId,
+            useTenantActiveManifest: input.useTenantActiveManifest,
+          }),
+          form_id: input.formId,
+          data: input.data ?? {},
+          actor_roles: input.actorRoles ?? [],
+          actor_attrs: input.actorAttrs ?? {},
+        });
+
+        // Map snake_case → camelCase FormPackage
+        return {
+          jsonSchema: response.json_schema ?? {},
+          uiSchema: response.ui_schema ?? {},
+          fieldState: response.field_state ?? [],
+          validation: response.validation ?? { valid: true, errors: [] },
+        };
+      } catch (error) {
+        if (error instanceof RemoteRuntimeError && KNOWN_RUNTIME_ERROR_CODES.has(error.code)) {
+          throw error;
+        }
+        // Fall back to local worker when remote runtime is unavailable.
+      }
+    }
+
+    const local = await this.postMessage<unknown>({
+      type: 'GENERATE_FORM_PACKAGE',
+      payload: {
+        dsl: input.dsl,
+        formId: input.formId,
+        data: input.data ?? {},
+        actorRoles: input.actorRoles ?? [],
+        actorAttrs: input.actorAttrs ?? {},
+      },
+    });
+    return this.unwrapEnvelopePayload<any>(local);
   }
 
   async redactData(dsl: string, data: any, context?: any): Promise<any> {

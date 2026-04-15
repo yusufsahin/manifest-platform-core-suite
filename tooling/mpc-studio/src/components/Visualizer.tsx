@@ -27,7 +27,8 @@ const Visualizer = ({ dsl, definitionId, definitionKind }: VisualizerProps) => {
 
   useEffect(() => {
     const renderChart = async () => {
-      if (!containerRef.current) return;
+      const container = containerRef.current;
+      if (!container) return;
 
       try {
         const preview = await mpcEngine.previewDefinition({
@@ -36,34 +37,38 @@ const Visualizer = ({ dsl, definitionId, definitionKind }: VisualizerProps) => {
           kindHint: definitionKind,
         });
         
-        containerRef.current.replaceChildren();
+        // Component might have unmounted while awaiting preview.
+        if (containerRef.current !== container) return;
+        container.replaceChildren();
 
         if (preview.renderer === 'mermaid') {
           if (preview.content && preview.content.trim().length > 0) {
             await mermaid.parse(preview.content, { suppressErrors: false });
             const renderId = `mpc-mermaid-${Date.now()}`;
             const { svg } = await mermaid.render(renderId, preview.content);
-            containerRef.current.innerHTML = svg;
+            if (containerRef.current !== container) return;
+            container.innerHTML = svg;
           } else {
             const empty = document.createElement('div');
             empty.className = 'flex items-center justify-center h-full text-gray-600 text-xs italic';
             empty.textContent = 'No workflow definitions found to visualize.';
-            containerRef.current.appendChild(empty);
+            container.appendChild(empty);
           }
         } else if (preview.renderer === 'json') {
           const pre = document.createElement('pre');
           pre.className = 'max-w-full text-[11px] text-gray-300 bg-black/20 border border-white/10 rounded-xl p-4 overflow-auto';
           pre.textContent = preview.content || '{}';
-          containerRef.current.appendChild(pre);
+          container.appendChild(pre);
         } else {
           const empty = document.createElement('div');
           empty.className = 'flex items-center justify-center h-full text-gray-600 text-xs italic';
           empty.textContent = preview.content || 'No preview available for selected definition.';
-          containerRef.current.appendChild(empty);
+          container.appendChild(empty);
         }
       } catch (err) {
         console.error('Mermaid error:', err);
-        containerRef.current.replaceChildren();
+        if (containerRef.current !== container) return;
+        container.replaceChildren();
         const error = document.createElement('div');
         error.className = 'flex flex-col items-center justify-center h-full text-xs gap-2 px-6 text-center';
         const title = document.createElement('div');
@@ -74,7 +79,7 @@ const Visualizer = ({ dsl, definitionId, definitionKind }: VisualizerProps) => {
         detail.textContent = err instanceof Error ? err.message : String(err);
         error.appendChild(title);
         error.appendChild(detail);
-        containerRef.current.appendChild(error);
+        container.appendChild(error);
       }
     };
 

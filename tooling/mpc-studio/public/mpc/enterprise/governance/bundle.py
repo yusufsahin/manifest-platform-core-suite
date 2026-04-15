@@ -47,7 +47,7 @@ class SBOMEntry:
     hash: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class ArtifactBundle:
     """Immutable compiled artifact bundle for deployment.
 
@@ -56,8 +56,8 @@ class ArtifactBundle:
     """
     registry: CompiledRegistry
     metadata: BundleMetadata
-    sbom: list[SBOMEntry] = field(default_factory=list)
-    attestations: list[Attestation] = field(default_factory=list)
+    sbom: tuple[SBOMEntry, ...] = field(default_factory=tuple)
+    attestations: tuple[Attestation, ...] = field(default_factory=tuple)
     signature: str | None = None
 
     @property

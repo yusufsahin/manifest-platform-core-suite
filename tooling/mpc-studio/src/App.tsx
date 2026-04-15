@@ -14,6 +14,7 @@ import GovernancePanel from './components/GovernancePanel';
 import OverlaySystemPanel from './components/OverlaySystemPanel';
 import UISchemaView from './components/UISchemaView';
 import DefinitionInspector from './components/DefinitionInspector';
+import FormPreview from './components/FormPreview';
 import { StatusBadge } from './components/StatusBadge';
 import { redactUnknown } from './lib/redaction';
 import type { DefinitionDescriptor } from './types/definition';
@@ -462,7 +463,14 @@ function App() {
     }
 
     if (sidebarTab === 'registry') {
-      return <DomainRegistry definitions={astDefinitions} />;
+      return (
+        <DomainRegistry
+          definitions={astDefinitions}
+          onSelectDefinition={(def) => {
+            setSelectedDefinitionId(def.id);
+          }}
+        />
+      );
     }
     if (sidebarTab === 'security') {
       return <PolicySimulator onSimulate={handleSimulatePolicy} context={panelContext} />;
@@ -504,6 +512,37 @@ function App() {
     }
     if (sidebarTab === 'overlays') {
       return <OverlaySystemPanel definitions={definitionItems} context={panelContext} />;
+    }
+    if (sidebarTab === 'form-preview') {
+      const selectedFormId = selectedDefinition?.kind === 'FormDef' ? selectedDefinition.id : '';
+      const formId = selectedFormId || (definitionItems.find((d) => d.kind === 'FormDef')?.id ?? '');
+      if (!formId) {
+        return (
+          <DefinitionInspector
+            definition={selectedDefinition}
+            reason="Form preview requires a FormDef definition in the manifest."
+          />
+        );
+      }
+      return (
+        <FormPreview
+          formId={formId}
+          onGeneratePackage={async ({ formId: requestedId, data }) =>
+            mpcEngine.generateFormPackage({
+              dsl,
+              formId: requestedId,
+              data,
+              tenantId: tenantFromUrl,
+              useTenantActiveManifest,
+              artifactId: selectedArtifactId || undefined,
+            })
+          }
+          getLastRuntimeInfo={() => ({
+            metrics: mpcEngine.getLastWorkerMetrics(),
+            diagnostics: mpcEngine.getLastWorkerDiagnostics(),
+          })}
+        />
+      );
     }
     return (
       <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">

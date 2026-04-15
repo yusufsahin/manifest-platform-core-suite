@@ -49,6 +49,9 @@ npm run test:benchmark:enforce
 ## Operational Flags
 
 - `VITE_WORKFLOW_TRACE_V2=false`: emergency kill switch for trace v2 UI (falls back to legacy trace mode).
+- `VITE_MPC_FORM_MAX_DSL_BYTES=256000`: max bytes accepted for DSL when generating a FormPackage in the local worker.
+- `VITE_MPC_FORM_MAX_DATA_BYTES=64000`: max bytes accepted for `data` when generating a FormPackage in the local worker.
+- `VITE_MPC_FORM_MAX_ACTOR_BYTES=32000`: max bytes accepted for `actorRoles` + `actorAttrs` when generating a FormPackage in the local worker.
 
 ## Local File System Access
 

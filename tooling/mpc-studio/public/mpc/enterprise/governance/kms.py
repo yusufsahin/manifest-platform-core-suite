@@ -17,15 +17,11 @@ class AWSKMSSigningPort:
     region_name: str | None = None
     
     def sign(self, data: bytes) -> str:
-        # Note: In a real environment, we'd use boto3.
-        # This is a structured placeholder for Phase 11.
-        import base64
-        import hashlib
-        
-        # Simulated signing logic
-        digest = hashlib.sha256(data).digest()
-        # In reality: client.sign(KeyId=self.key_id, Message=digest, MessageType='DIGEST', SigningAlgorithm='RSASSA_PSS_SHA_256')
-        return base64.b64encode(digest).decode()
+        raise NotImplementedError(
+            "AWSKMSSigningPort.sign() requires boto3 and a real AWS KMS integration. "
+            "Install boto3 and implement: "
+            "client.sign(KeyId=..., Message=..., SigningAlgorithm='RSASSA_PSS_SHA_256')."
+        )
 
     def algorithm(self) -> str:
         return "aws-kms-rsassa-pss-sha-256"
@@ -37,5 +33,7 @@ class KMSVerificationPort:
     provider: str # 'aws', 'gcp', 'azure'
 
     def verify(self, data: bytes, signature: str) -> bool:
-        # Simulated verification logic
-        return True # Placeholder
+        raise NotImplementedError(
+            f"KMSVerificationPort ({self.provider!r}) requires a real KMS integration. "
+            "Implement this method using the appropriate SDK (boto3, google-cloud-kms, etc.)."
+        )

@@ -86,7 +86,9 @@ class RedactionEngine:
         for line in lines:
             line_redacted = line
             for key in self.config.deny_keys:
-                if f"{key}=" in line.lower() or f"'{key}':" in line.lower():
+                key_l = key.lower()
+                lower_line = line.lower()
+                if f"{key_l}=" in lower_line or f"'{key_l}':" in lower_line:
                     line_redacted = "[REDACTED TRACE LINE]"
                     break
             redacted_lines.append(line_redacted)
