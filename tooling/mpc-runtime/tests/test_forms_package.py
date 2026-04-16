@@ -37,6 +37,7 @@ def test_forms_package_manifest_text_ok() -> None:
     body = response.json()
     assert body["request_id"] == "req-1"
     assert "duration_ms" in body
+    assert body["form_contract_version"] == "1.0.0"
     assert body["json_schema"]["type"] == "object"
     assert "email" in body["json_schema"]["properties"]
 

@@ -1,33 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Layout, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { DefinitionDiagnostic } from '../types/definition';
-import type { WorkerRuntimeMetrics } from '../engine/mpc-engine';
-
-type FormPackage = {
-  jsonSchema: {
-    title?: string;
-    properties?: Record<string, any>;
-    required?: string[];
-    'x-form-id'?: string;
-    'x-workflow-state'?: string;
-    'x-workflow-trigger'?: string;
-  };
-  uiSchema: Record<string, any>;
-  fieldState: Array<{ field_id: string; visible: boolean; readonly: boolean }>;
-  validation: { valid: boolean; errors: Array<{ field_id: string; message: string; expr?: string | null }> };
-};
+import type { WorkerRuntimeMetrics, WorkflowStepResponse } from '../engine/mpc-engine';
+import type { FormPackage } from '../types/form';
+import { renderWidget, resolveWidgetId } from '../forms/registry';
 
 export default function FormPreview(props: {
   formId: string;
   onGeneratePackage: (input: { formId: string; data: Record<string, unknown> }) => Promise<FormPackage>;
+  onWorkflowStep?: (input: { event: string; currentState?: string; initialState?: string }) => Promise<WorkflowStepResponse>;
   getLastRuntimeInfo?: () => { metrics: WorkerRuntimeMetrics | null; diagnostics: DefinitionDiagnostic[] };
 }) {
-  const { formId, onGeneratePackage, getLastRuntimeInfo } = props;
+  const { formId, onGeneratePackage, onWorkflowStep, getLastRuntimeInfo } = props;
   const [loading, setLoading] = useState(false);
   const [engineError, setEngineError] = useState<string | null>(null);
   const [pkg, setPkg] = useState<FormPackage | null>(null);
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [submitted, setSubmitted] = useState(false);
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStepResponse | null>(null);
   const [runtimeInfo, setRuntimeInfo] = useState<{
     metrics: WorkerRuntimeMetrics | null;
     diagnostics: DefinitionDiagnostic[];
@@ -52,9 +42,11 @@ export default function FormPreview(props: {
       } else {
         setRuntimeInfo({ metrics: null, diagnostics: [] });
       }
+      return result;
     } catch (err) {
       setPkg(null);
       setEngineError(err instanceof Error ? err.message : String(err));
+      return null;
     } finally {
       setLoading(false);
     }
@@ -66,9 +58,83 @@ export default function FormPreview(props: {
 
   const schema = pkg?.jsonSchema;
   const properties = schema?.properties ?? {};
+  const uiOrder = (pkg?.uiSchema as any)?.['ui:order'];
+  const orderedFieldIds: string[] = Array.isArray(uiOrder)
+    ? uiOrder.filter((v: unknown): v is string => typeof v === 'string')
+    : Object.keys(properties);
   const required = new Set(schema?.required ?? []);
   const hasDiagnostics = (runtimeInfo.diagnostics ?? []).length > 0;
   const errorDiagnostics = (runtimeInfo.diagnostics ?? []).filter((d) => d.severity === 'error');
+  const fieldErrorsById = useMemo(() => {
+    const map = new Map<string, Array<{ message: string; expr?: string | null }>>();
+    for (const err of pkg?.validation?.errors ?? []) {
+      if (!err?.field_id) continue;
+      const list = map.get(err.field_id) ?? [];
+      list.push({ message: err.message, expr: err.expr });
+      map.set(err.field_id, list);
+    }
+    return map;
+  }, [pkg]);
+
+  type LayoutGroup = { title?: string; columns: string[][] };
+  const layoutGroups: LayoutGroup[] = useMemo(() => {
+    const ui = (pkg?.uiSchema ?? {}) as any;
+    const all = orderedFieldIds.filter((id) => typeof id === 'string' && id.length > 0);
+    const used = new Set<string>();
+    const groups: LayoutGroup[] = [];
+
+    const normalizeColumn = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+
+    const normalizeColumns = (value: unknown): string[][] => {
+      if (Array.isArray(value) && value.every(Array.isArray)) {
+        return value.map(normalizeColumn).filter((col) => col.length > 0);
+      }
+      return [];
+    };
+
+    const uiGroups = ui?.['ui:groups'];
+    if (Array.isArray(uiGroups)) {
+      for (const g of uiGroups) {
+        if (!g || typeof g !== 'object') continue;
+        const title = typeof g.title === 'string' ? g.title : undefined;
+        const candidateA = normalizeColumns((g as any)['ui:columns']);
+        const candidateB = normalizeColumns((g as any).columns);
+        const candidateC = (() => {
+          const fields = normalizeColumn((g as any).fields);
+          const cols = Math.max(1, Math.min(4, Number((g as any).columns ?? 1) || 1));
+          if (fields.length === 0) return [];
+          if (cols === 1) return [fields];
+          const out: string[][] = Array.from({ length: cols }, () => []);
+          fields.forEach((id, idx) => out[idx % cols].push(id));
+          return out;
+        })();
+        const columns = candidateA.length > 0 ? candidateA : candidateB.length > 0 ? candidateB : candidateC;
+        const effective = (Array.isArray(columns) ? columns : []).filter((c) => c.length > 0);
+        if (effective.length === 0) continue;
+        for (const col of effective) for (const id of col) used.add(id);
+        groups.push({ title, columns: effective });
+      }
+    }
+
+    const uiColumns = normalizeColumns(ui?.['ui:columns']);
+    if (groups.length === 0 && uiColumns.length > 0) {
+      for (const col of uiColumns) for (const id of col) used.add(id);
+      groups.push({ columns: uiColumns });
+    }
+
+    if (groups.length === 0) {
+      for (const id of all) used.add(id);
+      groups.push({ columns: [all] });
+    }
+
+    const remainder = all.filter((id) => !used.has(id));
+    if (remainder.length > 0) {
+      groups.push({ title: 'Other', columns: [remainder] });
+    }
+
+    return groups;
+  }, [pkg, orderedFieldIds]);
 
   return (
     <div className="h-full flex flex-col bg-white/[0.01]">
@@ -170,86 +236,120 @@ export default function FormPreview(props: {
                       trigger: {schema?.['x-workflow-trigger']}
                     </span>
                   ) : null}
+                  {workflowStep?.step ? (
+                    <span
+                      className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono ${
+                        workflowStep.step.allow ? 'bg-green-500/15 text-green-300' : 'bg-red-500/15 text-red-200'
+                      }`}
+                      title={(workflowStep.step.reasons ?? [])
+                        .map((r) => r.summary || r.code)
+                        .filter(Boolean)
+                        .join('\n')}
+                    >
+                      wf: {workflowStep.currentState}
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
               <div className="p-4 space-y-4">
-                {Object.entries(properties).map(([fieldId, field]) => {
-                  const state = fieldStateById.get(fieldId) ?? { visible: true, readonly: false };
-                  if (!state.visible) return null;
+                {layoutGroups.map((group, groupIdx) => (
+                  <div key={groupIdx} className="space-y-3">
+                    {group.title ? (
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{group.title}</div>
+                    ) : null}
 
-                  const label = field?.title || fieldId;
-                  const isRequired = required.has(fieldId);
-                  const inputId = `form-preview-${formId}-${fieldId}`;
-                  const value = formData[fieldId];
-                  const disabled = state.readonly;
+                    <div
+                      className={
+                        group.columns.length <= 1
+                          ? ''
+                          : group.columns.length === 2
+                            ? 'grid gap-4 grid-cols-2'
+                            : group.columns.length === 3
+                              ? 'grid gap-4 grid-cols-3'
+                              : 'grid gap-4 grid-cols-4'
+                      }
+                    >
+                      {group.columns.map((column, colIdx) => (
+                        <div key={colIdx} className="space-y-4">
+                          {column.map((fieldId) => {
+                            const field = (properties as any)[fieldId] as any;
+                            const state = fieldStateById.get(fieldId) ?? { visible: true, readonly: false };
+                            if (!state.visible) return null;
 
-                  const baseClass =
-                    'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-white ' +
-                    'focus:outline-none focus:border-violet-500/60 transition-colors placeholder-gray-600 disabled:opacity-60';
+                            const label = field?.title || fieldId;
+                            const isRequired = required.has(fieldId);
+                            const inputId = `form-preview-${formId}-${fieldId}`;
+                            const value = formData[fieldId];
+                            const disabled = state.readonly;
+                            const ui = ((pkg?.uiSchema as any)?.[fieldId] ?? {}) as Record<string, any>;
+                            const placeholder = (ui?.['ui:placeholder'] ?? field?.['x-placeholder'] ?? fieldId) as string;
+                            const resolved = resolveWidgetId({
+                              jsonSchema: schema as any,
+                              uiSchema: pkg?.uiSchema as any,
+                              fieldId,
+                            });
+                            const fieldErrors = fieldErrorsById.get(fieldId) ?? [];
 
-                  return (
-                    <div key={fieldId} className="space-y-1.5">
-                      <label className="flex items-center gap-1 text-[10px] font-medium text-gray-400">
-                        {label}
-                        {isRequired ? <span className="text-red-400">*</span> : null}
-                        <span className="text-[9px] font-mono text-gray-700 ml-1">({field?.type ?? 'any'})</span>
-                      </label>
+                            const baseClass =
+                              'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-white ' +
+                              'focus:outline-none focus:border-violet-500/60 transition-colors placeholder-gray-600 disabled:opacity-60';
 
-                      {field?.enum ? (
-                        <select
-                          id={inputId}
-                          aria-label={label}
-                          value={(value as any) ?? ''}
-                          disabled={disabled}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, [fieldId]: e.target.value }))}
-                          className={baseClass}
-                        >
-                          <option value="">Seçiniz...</option>
-                          {(field.enum as string[]).map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      ) : field?.type === 'boolean' ? (
-                        <input
-                          id={inputId}
-                          aria-label={label}
-                          type="checkbox"
-                          checked={Boolean(value)}
-                          disabled={disabled}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, [fieldId]: e.target.checked }))}
-                          className="w-4 h-4 rounded accent-violet-500 disabled:opacity-60"
-                        />
-                      ) : field?.type === 'number' ? (
-                        <input
-                          id={inputId}
-                          aria-label={label}
-                          type="number"
-                          value={(value as any) ?? ''}
-                          disabled={disabled}
-                          min={field.minimum}
-                          max={field.maximum}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, [fieldId]: e.target.valueAsNumber }))}
-                          className={baseClass}
-                          placeholder={field?.['x-placeholder'] ?? fieldId}
-                        />
-                      ) : (
-                        <input
-                          id={inputId}
-                          aria-label={label}
-                          type="text"
-                          value={(value as any) ?? ''}
-                          disabled={disabled}
-                          onChange={(e) => setFormData((prev) => ({ ...prev, [fieldId]: e.target.value }))}
-                          className={baseClass}
-                          placeholder={field?.['x-placeholder'] ?? fieldId}
-                        />
-                      )}
+                            return (
+                              <div key={fieldId} className="space-y-1.5">
+                                <label className="flex items-center gap-1 text-[10px] font-medium text-gray-400">
+                                  {label}
+                                  {isRequired ? <span className="text-red-400">*</span> : null}
+                                  <span className="text-[9px] font-mono text-gray-700 ml-1">({field?.type ?? 'any'})</span>
+                                  {resolved.source === 'uiSchema' &&
+                                  resolved.requested &&
+                                  resolved.widget === 'text' &&
+                                  resolved.requested !== 'text' ? (
+                                    <span
+                                      className="text-[9px] font-mono text-yellow-200 ml-2 px-1.5 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/20"
+                                      title={`Unknown ui:widget '${resolved.requested}', falling back to 'text'.`}
+                                    >
+                                      widget:{resolved.requested}
+                                    </span>
+                                  ) : null}
+                                </label>
+
+                                {renderWidget(resolved.widget, {
+                                  inputId,
+                                  label,
+                                  value,
+                                  disabled,
+                                  placeholder,
+                                  onChange: (next) => setFormData((prev) => ({ ...prev, [fieldId]: next })),
+                                  schema: field ?? {},
+                                  ui,
+                                  className: baseClass,
+                                })}
+
+                                {fieldErrors.length > 0 ? (
+                                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
+                                    <ul className="text-[10px] text-red-200 font-mono space-y-1">
+                                      {fieldErrors.map((err, idx) => (
+                                        <li key={idx}>
+                                          {err.message}
+                                          {err.expr ? (
+                                            <span className="text-[9px] text-red-200/70 ml-2" title={err.expr}>
+                                              expr
+                                            </span>
+                                          ) : null}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
 
               <div className="px-4 pb-4 space-y-3">
@@ -266,10 +366,38 @@ export default function FormPreview(props: {
                   </div>
                 ) : null}
 
+                {workflowStep?.step && !workflowStep.step.allow ? (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-red-200">Workflow</p>
+                    <ul className="mt-2 space-y-1 text-[11px] text-red-200 font-mono">
+                      {(workflowStep.step.reasons ?? []).map((r, idx) => (
+                        <li key={idx}>[{r.code}] {r.summary || r.code}</li>
+                      ))}
+                      {(workflowStep.step.errors ?? []).map((e, idx) => (
+                        <li key={`e-${idx}`}>[{e.code}] {e.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
                 <button
                   onClick={async () => {
                     setSubmitted(false);
-                    await handleGenerate(formData);
+                    const next = await handleGenerate(formData);
+                    setWorkflowStep(null);
+                    const trigger = next?.jsonSchema?.['x-workflow-trigger'];
+                    if (next && next.validation?.valid && onWorkflowStep && trigger) {
+                      try {
+                        const step = await onWorkflowStep({
+                          event: String(trigger),
+                          currentState: workflowStep?.currentState,
+                          initialState: workflowStep?.initialState,
+                        });
+                        setWorkflowStep(step);
+                      } catch (err) {
+                        setEngineError(err instanceof Error ? err.message : String(err));
+                      }
+                    }
                     setSubmitted(true);
                     setTimeout(() => setSubmitted(false), 1500);
                   }}

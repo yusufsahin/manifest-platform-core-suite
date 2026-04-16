@@ -10,6 +10,8 @@ from mpc.features.form.engine import (
     ValidationResult,
 )
 
+FORM_CONTRACT_VERSION = "1.0.0"
+
 __all__ = [
     "FormEngine",
     "FormField",
@@ -18,5 +20,6 @@ __all__ = [
     "ValidationResult",
     "FieldState",
     "FormPackage",
+    "FORM_CONTRACT_VERSION",
 ]
 

@@ -1,4 +1,5 @@
 import { loadPyodide, type PyodideInterface } from 'pyodide';
+import { FORM_CONTRACT_VERSION } from '../types/form';
 
 let pyodide: PyodideInterface | null = null;
 let libraryLoaded = false;
@@ -194,6 +195,8 @@ const FALLBACK_REQUIRED_FILES: string[] = [
   'features/form/__init__.py',
   'features/form/engine.py',
   'features/form/kinds.py',
+  'features/overlay/__init__.py',
+  'features/overlay/engine.py',
 ];
 
 function shouldIncludeRuntimePy(relPath: string): boolean {
@@ -206,7 +209,7 @@ function shouldIncludeRuntimePy(relPath: string): boolean {
     /^tooling\/validator\//,
     /^tooling\/uischema\//,
     /^features\/__init__\.py$/,
-    /^features\/(workflow|form|expr|acl)\//,
+    /^features\/(workflow|form|expr|acl|overlay)\//,
   ];
   return patterns.some((re) => re.test(relPath));
 }
@@ -308,6 +311,7 @@ self.onmessage = async (e) => {
       const dsl = payload;
 
       py.globals.set('MPC_INPUT_DSL', dsl);
+      py.globals.set('MPC_STRICT', readEnvBool('VITE_MPC_STRICT_VALIDATION', false));
       let result: string;
       try {
         result = await py.runPythonAsync(`
@@ -318,6 +322,7 @@ from mpc.tooling.validator.structural import validate_structural
 from mpc.tooling.validator.semantic import validate_semantic
 from mpc.kernel.meta.models import DomainMeta, KindDef
 from mpc.kernel.canonical.hash import stable_hash
+from mpc.features.form.kinds import FORM_KINDS
 
 def to_dict(node):
     return {
@@ -344,9 +349,16 @@ def run_pipeline(dsl_text):
         ast = parse(dsl_text)
         
         # 2. Structural Validation
-        # Build permissive kinds from AST to avoid false unknown-kind noise in Studio preview.
+        # Default: permissive kinds from AST to avoid unknown-kind noise.
+        # Strict mode: apply real KindDef rules for FormDef/FieldDef (required/optional props),
+        # while keeping other kinds permissive to preserve Studio authoring ergonomics.
         kind_names = sorted({node.kind for node in ast.defs if isinstance(node.kind, str)})
-        meta = DomainMeta(kinds=[KindDef(name=name) for name in kind_names])
+        if MPC_STRICT:
+            known = {k.name for k in FORM_KINDS}
+            extra = [KindDef(name=name) for name in kind_names if name not in known]
+            meta = DomainMeta(kinds=[*FORM_KINDS, *extra])
+        else:
+            meta = DomainMeta(kinds=[KindDef(name=name) for name in kind_names])
         struct_errors = validate_structural(ast, meta)
         
         # 3. Semantic Validation
@@ -394,6 +406,7 @@ json.dumps(run_pipeline(MPC_INPUT_DSL))
       `);
       } finally {
         safeDeleteGlobal(py, 'MPC_INPUT_DSL');
+        safeDeleteGlobal(py, 'MPC_STRICT');
       }
 
       self.postMessage({ id, type: 'RESULT', payload: JSON.parse(result) });
@@ -1398,6 +1411,7 @@ json.dumps({
           'FORM_PACKAGE',
           requestId,
           {
+            formContractVersion: FORM_CONTRACT_VERSION,
             jsonSchema: {},
             uiSchema: {},
             fieldState: [],
@@ -1426,6 +1440,7 @@ json.dumps({
       py.globals.set('_form_fail_open', readEnvBool('VITE_MPC_FORM_FAIL_OPEN', true));
 
       const emptyFormPackage = {
+        formContractVersion: FORM_CONTRACT_VERSION,
         jsonSchema: {} as Record<string, unknown>,
         uiSchema: {} as Record<string, unknown>,
         fieldState: [] as unknown[],
@@ -1473,7 +1488,17 @@ json.dumps({
             setTimeout(() => reject(new Error('E_FORM_TIMEOUT')), timeoutMs);
           }),
         ]);
-        postEnvelope(id, 'FORM_PACKAGE', requestId, JSON.parse(raw as string), startedAt);
+        const parsed = JSON.parse(raw as string) as Record<string, unknown>;
+        postEnvelope(
+          id,
+          'FORM_PACKAGE',
+          requestId,
+          {
+            formContractVersion: FORM_CONTRACT_VERSION,
+            ...parsed,
+          },
+          startedAt,
+        );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'E_FORM_TIMEOUT') {
@@ -1508,6 +1533,81 @@ json.dumps({
         safeDeleteGlobal(py, '_actor_roles');
         safeDeleteGlobal(py, '_actor_attrs');
         safeDeleteGlobal(py, '_form_fail_open');
+      }
+    } else if (type === 'OVERLAY_COMPOSE') {
+      const { dsl } = payload as { dsl: string };
+      py.globals.set('OV_DSL', dsl);
+      try {
+        const raw = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.kernel.ast.models import ManifestAST
+from mpc.features.overlay.engine import OverlayEngine
+
+ast = parse(OV_DSL)
+base_defs = [d for d in ast.defs if getattr(d, "kind", None) != "Overlay"]
+overlay_defs = [d for d in ast.defs if getattr(d, "kind", None) == "Overlay"]
+
+base_ast = ManifestAST(
+  schema_version=ast.schema_version,
+  namespace=ast.namespace,
+  name=ast.name,
+  manifest_version=ast.manifest_version,
+  defs=base_defs,
+)
+overlay_ast = ManifestAST(
+  schema_version=ast.schema_version,
+  namespace=ast.namespace,
+  name=ast.name,
+  manifest_version=ast.manifest_version,
+  defs=overlay_defs,
+)
+
+engine = OverlayEngine(base=base_ast)
+res = engine.apply(overlay_ast)
+
+def _key(node):
+  return f"{node.kind}:{node.id}"
+
+base_by_key = { _key(n): n for n in base_ast.defs }
+after_by_key = { _key(n): n for n in res.ast.defs }
+
+diffs = []
+for key, after in after_by_key.items():
+  before = base_by_key.get(key)
+  before_props = dict(getattr(before, "properties", {}) or {}) if before else {}
+  after_props = dict(getattr(after, "properties", {}) or {})
+  if before is None or before_props != after_props:
+    diffs.append({
+      "key": key,
+      "kind": getattr(after, "kind", "") or "",
+      "id": getattr(after, "id", "") or "",
+      "before": before_props,
+      "after": after_props,
+    })
+
+overlays = []
+for o in overlay_defs:
+  props = dict(getattr(o, "properties", {}) or {})
+  selector = props.get("selector")
+  overlays.append({
+    "id": getattr(o, "id", "") or "",
+    "op": props.get("op", "merge"),
+    "selector": selector if isinstance(selector, dict) else None,
+    "path": props.get("path"),
+    "values": props.get("values", props.get("value")),
+  })
+
+json.dumps({
+  "applied": list(res.applied),
+  "conflicts": [{"code": c.code, "message": c.message} for c in res.conflicts],
+  "overlays": overlays,
+  "diffs": diffs,
+})
+        `);
+        postEnvelope(id, 'OVERLAY_COMPOSE', requestId, JSON.parse(raw as string), startedAt);
+      } finally {
+        safeDeleteGlobal(py, 'OV_DSL');
       }
     }
   } catch (err: unknown) {
