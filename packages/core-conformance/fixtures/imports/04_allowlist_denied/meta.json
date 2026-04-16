@@ -1,0 +1,7 @@
+{
+  "category": "imports",
+  "description": "import source blocked by allowlist returns E_VALID_UNRESOLVED_REF",
+  "preset": "preset-generic-full",
+  "clock": "2026-01-01T00:00:00Z"
+}
+

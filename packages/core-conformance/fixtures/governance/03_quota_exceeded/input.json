@@ -1,9 +1,18 @@
 {
   "enterpriseMode": true,
+  "verification": {
+    "algorithm": "hmac-sha256",
+    "key": "secret1"
+  },
   "checkQuota": true,
   "tenantId": "tenant-1",
   "artifact": {
-    "signature": "VALID_SIG",
+    "payload": {
+      "provenance": { "astHash": "h1" },
+      "nodeCount": 9999
+    },
+    "signatureAlgorithm": "hmac-sha256",
+    "signature": "3297a23f7fece7cfafb91f5a6422920ecb5f3620a40545eef569fef607564726",
     "provenance": { "astHash": "h1" },
     "nodeCount": 9999
   },

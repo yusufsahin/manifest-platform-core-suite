@@ -55,5 +55,5 @@ def test_forms_package_missing_active_artifact() -> None:
     )
     assert response.status_code in (409, 400)
     detail = response.json()["detail"]
-    assert detail["code"] in ("ACTIVE_ARTIFACT_REQUIRED",)
+    assert detail["code"] in ("E_RUNTIME_ACTIVE_REQUIRED",)
 

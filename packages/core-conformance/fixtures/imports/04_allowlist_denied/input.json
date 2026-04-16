@@ -1,0 +1,12 @@
+{
+  "config": {
+    "allowed_sources": ["good"]
+  },
+  "manifests": {
+    "evil": "@schema 1\n@namespace \"evil\"\n@name \"evil\"\n@version \"1.0.0\"\n\ndef Policy pEvil { rules: [] }\n",
+    "good": "@schema 1\n@namespace \"good\"\n@name \"good\"\n@version \"1.0.0\"\n\ndef Policy pGood { rules: [] }\n"
+  },
+  "versions": { "evil": "1.0.0", "good": "1.0.0" },
+  "dsl": "@schema 1\n@namespace \"app\"\n@name \"app\"\n@version \"1.0.0\"\n\ndef Import evil { source: \"evil\" }\n\ndef Policy pApp { rules: [] }\n"
+}
+

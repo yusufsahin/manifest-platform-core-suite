@@ -1,9 +1,16 @@
 {
   "enterpriseMode": true,
+  "verification": {
+    "algorithm": "hmac-sha256",
+    "key": "secret1"
+  },
   "artifact": {
-    "provenance": {
-      "astHash": "abc123"
+    "payload": {
+      "provenance": {
+        "astHash": "abc123"
+      }
     },
-    "signature": "INVALIDSIG_tampered_payload"
+    "signatureAlgorithm": "hmac-sha256",
+    "signature": "deadbeef"
   }
 }

@@ -21,6 +21,7 @@ from referencing import Registry, Resource
 from mpc.features.acl.engine import ACLEngine, ACLResult
 from mpc.kernel.ast.models import ASTNode, ManifestAST
 from mpc.kernel.canonical import canonicalize, order_definitions
+from mpc.kernel.canonical.serializer import canonicalize_bytes
 from mpc.features.compose.engine import compose_decisions
 from mpc.kernel.contracts.models import Decision, Intent, Reason
 from mpc.kernel.errors.exceptions import MPCBudgetError, MPCError
@@ -795,16 +796,40 @@ class ConformanceRunner:
                     "severity": "fatal",
                 }
             }
-        if enterprise and signature and (
-            signature.startswith("INVALID") or "tampered" in signature.lower()
-        ):
-            return {
-                "error": {
-                    "code": "E_GOV_SIGNATURE_INVALID",
-                    "message": "Artifact signature verification failed",
-                    "severity": "fatal",
-                }
-            }
+        if enterprise and signature:
+            verification = data.get("verification") if isinstance(data.get("verification"), dict) else None
+            payload = artifact.get("payload") if isinstance(artifact, dict) else None
+            algorithm = (
+                (artifact.get("signatureAlgorithm") if isinstance(artifact, dict) else None)
+                or (verification.get("algorithm") if verification else None)
+                or "hmac-sha256"
+            )
+            key = verification.get("key") if verification else None
+
+            # Deterministic reference verification for fixtures: HMAC over canonical JSON payload.
+            if verification and key and payload is not None and algorithm == "hmac-sha256":
+                from mpc.enterprise.governance.signing import HMACSigningPort
+
+                port = HMACSigningPort(str(key))
+                expected = port.sign(canonicalize_bytes(payload))
+                if signature != expected:
+                    return {
+                        "error": {
+                            "code": "E_GOV_SIGNATURE_INVALID",
+                            "message": "Artifact signature verification failed",
+                            "severity": "fatal",
+                        }
+                    }
+            else:
+                # Backward-compatible heuristic path (legacy fixtures).
+                if signature.startswith("INVALID") or "tampered" in str(signature).lower():
+                    return {
+                        "error": {
+                            "code": "E_GOV_SIGNATURE_INVALID",
+                            "message": "Artifact signature verification failed",
+                            "severity": "fatal",
+                        }
+                    }
         if data.get("checkQuota"):
             quota_limits = data.get("quotaLimits") or {}
             max_nodes = quota_limits.get("maxManifestNodes")
@@ -862,6 +887,7 @@ class ConformanceRunner:
         """Run imports fixture: resolve Import defs with ImportResolver."""
         data = ctx.input_data
         manifests = data.get("manifests") if isinstance(data.get("manifests"), dict) else {}
+        config = data.get("config") if isinstance(data.get("config"), dict) else {}
         base_dsl = data.get("dsl")
         if not isinstance(base_dsl, str) or not base_dsl.strip():
             return {
@@ -869,7 +895,11 @@ class ConformanceRunner:
             }
         from mpc.kernel.parser import parse
 
-        resolver = ImportResolver()
+        resolver = ImportResolver(
+            allowed_sources=set(config.get("allowed_sources", [])) if isinstance(config.get("allowed_sources"), list) else None,
+            max_imports=int(config.get("max_imports", 100)),
+            max_total_defs=int(config.get("max_total_defs", 5000)),
+        )
         for name, dsl in manifests.items():
             if isinstance(name, str) and isinstance(dsl, str):
                 versions = data.get("versions", {}) if isinstance(data.get("versions"), dict) else {}

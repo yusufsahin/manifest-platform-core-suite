@@ -57,6 +57,12 @@ All produced errors MUST use codes in this registry. Unknown codes MUST fail con
 - E_GOV_ACTIVATION_FAILED
 - E_QUOTA_EXCEEDED
 
+## Runtime (Remote API)
+- E_RUNTIME_NOT_FOUND
+- E_RUNTIME_FORBIDDEN
+- E_RUNTIME_ACTIVE_REQUIRED
+- E_RUNTIME_INTERNAL
+
 ## Reason Codes (R\_\*)
 
 Reason codes appear in `Decision.reasons[].code`. They explain WHY a decision was made.
