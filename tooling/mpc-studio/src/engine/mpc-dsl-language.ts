@@ -2,6 +2,8 @@
  * Monaco Editor language support for MPC DSL.
  * Lightweight tokenizer + autocomplete + hover help.
  */
+import { FIELDDEF_PROPS, FORMDEF_PROPS, FORM_FIELD_TYPES } from './meta/formMeta';
+
 export function registerMpcDslLanguage(monaco: any): void {
   const existing = monaco.languages.getLanguages().find((l: any) => l.id === 'mpc-dsl');
   if (existing) return;
@@ -64,6 +66,22 @@ export function registerMpcDslLanguage(monaco: any): void {
 
       const suggestions: any[] = [];
 
+      const getEnclosingDefKind = (): 'FormDef' | 'FieldDef' | null => {
+        const maxLookback = 80;
+        for (let i = 0; i < maxLookback; i++) {
+          const ln = position.lineNumber - i;
+          if (ln <= 0) break;
+          const text = String(model.getLineContent(ln) ?? '');
+          const m = text.match(/\bdef\s+(FormDef|FieldDef)\b/);
+          if (m?.[1] === 'FormDef') return 'FormDef';
+          if (m?.[1] === 'FieldDef') return 'FieldDef';
+        }
+        return null;
+      };
+
+      const inKind = getEnclosingDefKind();
+      const isKeyPosition = /^\s*[a-zA-Z_][\w]*\s*:?\s*$/.test(lineContent);
+
       const directives = [
         { label: '@schema', detail: 'Schema version (integer)', insert: '@schema 1' },
         { label: '@namespace', detail: 'Manifest namespace', insert: '@namespace "${1:acme}"' },
@@ -102,11 +120,35 @@ export function registerMpcDslLanguage(monaco: any): void {
       }
 
       if (lineContent.includes('type:')) {
-        for (const t of ['string', 'number', 'boolean', 'select', 'multiselect', 'date', 'textarea', 'hidden']) {
+        for (const t of FORM_FIELD_TYPES) {
           suggestions.push({
             label: `"${t}"`,
             kind: monaco.languages.CompletionItemKind.EnumMember,
             insertText: `"${t}"`,
+            range,
+          });
+        }
+      }
+
+      if (isKeyPosition && inKind === 'FormDef') {
+        for (const p of FORMDEF_PROPS) {
+          suggestions.push({
+            label: `${p}`,
+            kind: monaco.languages.CompletionItemKind.Property,
+            detail: 'FormDef property',
+            insertText: `${p}: `,
+            range,
+          });
+        }
+      }
+
+      if (isKeyPosition && inKind === 'FieldDef') {
+        for (const p of FIELDDEF_PROPS) {
+          suggestions.push({
+            label: `${p}`,
+            kind: monaco.languages.CompletionItemKind.Property,
+            detail: 'FieldDef property',
+            insertText: `${p}: `,
             range,
           });
         }

@@ -9,6 +9,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from mpc.features.form.engine import FormEngine
+from mpc.features.form import FORM_CONTRACT_VERSION
 from mpc.features.form.kinds import FORM_KINDS
 from mpc.kernel.meta.models import DomainMeta
 from mpc.kernel.parser import parse
@@ -230,6 +231,7 @@ def form_package(
         return {
             "request_id": request_id,
             "duration_ms": duration_ms,
+            "form_contract_version": FORM_CONTRACT_VERSION,
             "json_schema": package.jsonSchema,
             "ui_schema": package.uiSchema,
             "field_state": package.fieldState,

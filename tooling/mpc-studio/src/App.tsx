@@ -511,7 +511,7 @@ function App() {
       );
     }
     if (sidebarTab === 'overlays') {
-      return <OverlaySystemPanel definitions={definitionItems} context={panelContext} />;
+      return <OverlaySystemPanel dsl={dsl} definitions={definitionItems} context={panelContext} />;
     }
     if (sidebarTab === 'form-preview') {
       const selectedFormId = selectedDefinition?.kind === 'FormDef' ? selectedDefinition.id : '';
@@ -535,6 +535,21 @@ function App() {
               tenantId: tenantFromUrl,
               useTenantActiveManifest,
               artifactId: selectedArtifactId || undefined,
+            })
+          }
+          onWorkflowStep={async ({ event, currentState, initialState }) =>
+            mpcEngine.workflowStep({
+              dsl,
+              event,
+              context: { source: 'form-preview', formId } as any,
+              currentState,
+              initialState,
+              actorId: 'form-preview',
+              actorRoles: ['user'],
+              tenantId: tenantFromUrl,
+              useTenantActiveManifest,
+              artifactId: selectedArtifactId || undefined,
+              limits: { maxSteps: 100, maxPayloadBytes: 16_384, maxEventNameLength: 128 },
             })
           }
           getLastRuntimeInfo={() => ({

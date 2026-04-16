@@ -17,6 +17,8 @@ import type {
 } from '../types/definition';
 import { isDefinitionCapability, normalizeDefinitionDescriptor } from '../types/definition';
 import { redactUnknown } from '../lib/redaction';
+import { FORM_CONTRACT_VERSION, type FormPackage, type RemoteFormPackageResponse } from '../types/form';
+import type { OverlayComposeResult } from '../types/overlay';
 
 const KNOWN_RUNTIME_ERROR_CODES = new Set([
   'INVALID_TRANSITION',
@@ -48,6 +50,16 @@ class RemoteRuntimeError extends Error {
     this.code = code;
     this.retryable = retryable;
   }
+}
+
+function mapRemoteFormPackageResponse(response: RemoteFormPackageResponse): FormPackage {
+  return {
+    formContractVersion: response.form_contract_version ?? FORM_CONTRACT_VERSION,
+    jsonSchema: (response.json_schema ?? {}) as any,
+    uiSchema: (response.ui_schema ?? {}) as any,
+    fieldState: (response.field_state ?? []) as any,
+    validation: (response.validation ?? { valid: true, errors: [] }) as any,
+  };
 }
 
 interface RuntimeSourceOptions {
@@ -562,15 +574,10 @@ export class MPCEngine {
     tenantId?: string;
     artifactId?: string;
     useTenantActiveManifest?: boolean;
-  }): Promise<any> {
+  }): Promise<FormPackage> {
     if (this.runtimeMode() === 'remote' && !this.isCircuitOpen()) {
       try {
-        const response = await this.postRemote<{
-          json_schema: unknown;
-          ui_schema: unknown;
-          field_state: unknown;
-          validation: unknown;
-        }>('/runtime/forms/package', {
+        const response = await this.postRemote<RemoteFormPackageResponse>('/runtime/forms/package', {
           tenant_id: input.tenantId,
           source: this.buildRuntimeSource({
             dsl: input.dsl,
@@ -583,13 +590,7 @@ export class MPCEngine {
           actor_attrs: input.actorAttrs ?? {},
         });
 
-        // Map snake_case → camelCase FormPackage
-        return {
-          jsonSchema: response.json_schema ?? {},
-          uiSchema: response.ui_schema ?? {},
-          fieldState: response.field_state ?? [],
-          validation: response.validation ?? { valid: true, errors: [] },
-        };
+        return mapRemoteFormPackageResponse(response);
       } catch (error) {
         if (error instanceof RemoteRuntimeError && KNOWN_RUNTIME_ERROR_CODES.has(error.code)) {
           throw error;
@@ -608,7 +609,7 @@ export class MPCEngine {
         actorAttrs: input.actorAttrs ?? {},
       },
     });
-    return this.unwrapEnvelopePayload<any>(local);
+    return this.unwrapEnvelopePayload<FormPackage>(local);
   }
 
   async redactData(dsl: string, data: any, context?: any): Promise<any> {
@@ -616,6 +617,14 @@ export class MPCEngine {
       type: 'REDACT_DATA',
       payload: { dsl, data, context }
     });
+  }
+
+  async overlayCompose(dsl: string): Promise<OverlayComposeResult> {
+    const local = await this.postMessage<unknown>({
+      type: 'OVERLAY_COMPOSE',
+      payload: { dsl },
+    });
+    return this.unwrapEnvelopePayload<OverlayComposeResult>(local);
   }
 
   async simulateACL(dsl: string, role: string, resource: string, action: string): Promise<any> {
