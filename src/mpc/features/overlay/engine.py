@@ -37,6 +37,13 @@ class OverlayResult:
     ast: ManifestAST
     applied: list[str] = field(default_factory=list)
     conflicts: list[Error] = field(default_factory=list)
+    trace: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _selector_to_dict(sel: Selector | None) -> dict[str, Any] | None:
+    if sel is None:
+        return None
+    return {"kind": sel.kind, "namespace": sel.namespace, "id": sel.id}
 
 
 def parse_selector(props: dict[str, Any]) -> Selector | None:
@@ -70,6 +77,7 @@ class OverlayEngine:
         applied: list[str] = []
         conflicts: list[Error] = []
         path_ops: dict[str, list[str]] = {}
+        trace: list[dict[str, Any]] = []
 
         overlay_defs = [node for node in overlay_ast.defs if node.kind == "Overlay"]
 
@@ -77,6 +85,7 @@ class OverlayEngine:
             selector = parse_selector(overlay_def.properties)
             op = overlay_def.properties.get("op", "merge")
             path = overlay_def.properties.get("path")
+            overlay_id = str(getattr(overlay_def, "id", "") or "")
 
             if selector is None:
                 conflicts.append(
@@ -96,6 +105,7 @@ class OverlayEngine:
                     parts = path.split(".")
                     for key in matched_keys:
                         existing = base_by_key[key]
+                        before_val = _get_nested(dict(existing.properties), parts)
                         new_props = dict(existing.properties)
                         _del_nested(new_props, parts)
                         base_by_key[key] = ASTNode(
@@ -107,10 +117,32 @@ class OverlayEngine:
                             source=existing.source,
                         )
                         applied.append(f"remove-path:{existing.id}:{path}")
+                        trace.append(
+                            {
+                                "overlay_id": overlay_id,
+                                "op": op,
+                                "selector": _selector_to_dict(selector),
+                                "target_key": key,
+                                "path": path,
+                                "before": before_val,
+                                "after": None,
+                            }
+                        )
                 else:
                     for key in matched_keys:
                         node = base_by_key.pop(key)
                         applied.append(f"remove:{node.id}")
+                        trace.append(
+                            {
+                                "overlay_id": overlay_id,
+                                "op": op,
+                                "selector": _selector_to_dict(selector),
+                                "target_key": key,
+                                "path": None,
+                                "before": dict(getattr(node, "properties", {}) or {}),
+                                "after": None,
+                            }
+                        )
                 continue
 
             if not matched_keys and op not in ("replace", "append"):
@@ -154,6 +186,7 @@ class OverlayEngine:
                 for key in matched_keys:
                     existing = base_by_key[key]
                     if path:
+                        before_val = _get_nested(dict(existing.properties), path.split("."))
                         _apply_path_op(
                             base_by_key,
                             key,
@@ -162,8 +195,13 @@ class OverlayEngine:
                             values,
                             op,
                             applied,
+                            trace=trace,
+                            overlay_id=overlay_id,
+                            selector=selector,
+                            before_path_value=before_val,
                         )
                     else:
+                        before_props = dict(existing.properties)
                         base_by_key[key] = ASTNode(
                             kind=existing.kind,
                             id=existing.id,
@@ -171,6 +209,17 @@ class OverlayEngine:
                             source=overlay_def.source,
                         )
                         applied.append(f"replace:{existing.id}")
+                        trace.append(
+                            {
+                                "overlay_id": overlay_id,
+                                "op": op,
+                                "selector": _selector_to_dict(selector),
+                                "target_key": key,
+                                "path": None,
+                                "before": before_props,
+                                "after": dict(values),
+                            }
+                        )
 
                 if not matched_keys and selector and selector.id:
                     kind = overlay_def.properties.get("kind", selector.kind or "Unknown")
@@ -182,11 +231,23 @@ class OverlayEngine:
                     )
                     base_by_key[_node_key(new_node)] = new_node
                     applied.append(f"replace:{selector.id}")
+                    trace.append(
+                        {
+                            "overlay_id": overlay_id,
+                            "op": op,
+                            "selector": _selector_to_dict(selector),
+                            "target_key": _node_key(new_node),
+                            "path": None,
+                            "before": None,
+                            "after": dict(values),
+                        }
+                    )
 
             elif op == "merge":
                 for key in matched_keys:
                     existing = base_by_key[key]
                     if path:
+                        before_val = _get_nested(dict(existing.properties), path.split("."))
                         _apply_path_op(
                             base_by_key,
                             key,
@@ -195,8 +256,13 @@ class OverlayEngine:
                             values,
                             op,
                             applied,
+                            trace=trace,
+                            overlay_id=overlay_id,
+                            selector=selector,
+                            before_path_value=before_val,
                         )
                     else:
+                        before_props = dict(existing.properties)
                         merged = _deep_merge(existing.properties, values)
                         base_by_key[key] = ASTNode(
                             kind=existing.kind,
@@ -207,11 +273,23 @@ class OverlayEngine:
                             source=existing.source,
                         )
                         applied.append(f"merge:{existing.id}")
+                        trace.append(
+                            {
+                                "overlay_id": overlay_id,
+                                "op": op,
+                                "selector": _selector_to_dict(selector),
+                                "target_key": key,
+                                "path": None,
+                                "before": before_props,
+                                "after": dict(merged),
+                            }
+                        )
 
             elif op == "append":
                 for key in matched_keys:
                     existing = base_by_key[key]
                     if path:
+                        before_val = _get_nested(dict(existing.properties), path.split("."))
                         _apply_path_op(
                             base_by_key,
                             key,
@@ -220,8 +298,13 @@ class OverlayEngine:
                             values,
                             op,
                             applied,
+                            trace=trace,
+                            overlay_id=overlay_id,
+                            selector=selector,
+                            before_path_value=before_val,
                         )
                     else:
+                        before_props = dict(existing.properties)
                         new_props = dict(existing.properties)
                         for prop_key, value in values.items():
                             existing_value = new_props.get(prop_key)
@@ -238,6 +321,17 @@ class OverlayEngine:
                             source=existing.source,
                         )
                         applied.append(f"append:{existing.id}")
+                        trace.append(
+                            {
+                                "overlay_id": overlay_id,
+                                "op": op,
+                                "selector": _selector_to_dict(selector),
+                                "target_key": key,
+                                "path": None,
+                                "before": before_props,
+                                "after": dict(new_props),
+                            }
+                        )
 
                 if not matched_keys and selector and selector.id:
                     kind = overlay_def.properties.get("kind", selector.kind or "Unknown")
@@ -249,10 +343,22 @@ class OverlayEngine:
                     )
                     base_by_key[_node_key(new_node)] = new_node
                     applied.append(f"append:{selector.id}")
+                    trace.append(
+                        {
+                            "overlay_id": overlay_id,
+                            "op": op,
+                            "selector": _selector_to_dict(selector),
+                            "target_key": _node_key(new_node),
+                            "path": None,
+                            "before": None,
+                            "after": dict(getattr(new_node, "properties", {}) or {}),
+                        }
+                    )
 
             elif op == "patch":
                 for key in matched_keys:
                     existing = base_by_key[key]
+                    before_props = dict(existing.properties)
                     merged = dict(existing.properties)
                     for prop_key, prop_val in values.items():
                         existing_val = merged.get(prop_key)
@@ -269,6 +375,17 @@ class OverlayEngine:
                         source=existing.source,
                     )
                     applied.append(f"patch:{existing.id}")
+                    trace.append(
+                        {
+                            "overlay_id": overlay_id,
+                            "op": op,
+                            "selector": _selector_to_dict(selector),
+                            "target_key": key,
+                            "path": None,
+                            "before": before_props,
+                            "after": dict(merged),
+                        }
+                    )
 
             else:
                 conflicts.append(
@@ -287,7 +404,7 @@ class OverlayEngine:
             manifest_version=self.base.manifest_version,
             defs=list(base_by_key.values()),
         )
-        return OverlayResult(ast=result_ast, applied=applied, conflicts=conflicts)
+        return OverlayResult(ast=result_ast, applied=applied, conflicts=conflicts, trace=trace)
 
     def _find_matches(
         self, selector: Selector, base_by_key: dict[str, ASTNode]
@@ -307,6 +424,11 @@ def _apply_path_op(
     values: dict[str, Any],
     op: str,
     applied: list[str],
+    *,
+    trace: list[dict[str, Any]],
+    overlay_id: str,
+    selector: Selector | None,
+    before_path_value: Any,
 ) -> None:
     """Apply an operation at a specific dotted path within a node's properties."""
     new_props = dict(existing.properties)
@@ -338,6 +460,18 @@ def _apply_path_op(
         source=existing.source,
     )
     applied.append(f"{op}:{existing.id}:{path}")
+    after_value = _get_nested(new_props, parts)
+    trace.append(
+        {
+            "overlay_id": overlay_id,
+            "op": op,
+            "selector": _selector_to_dict(selector),
+            "target_key": key,
+            "path": path,
+            "before": before_path_value,
+            "after": after_value,
+        }
+    )
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:

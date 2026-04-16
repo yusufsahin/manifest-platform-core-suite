@@ -8,10 +8,45 @@ import { renderWidget, resolveWidgetId } from '../forms/registry';
 export default function FormPreview(props: {
   formId: string;
   onGeneratePackage: (input: { formId: string; data: Record<string, unknown> }) => Promise<FormPackage>;
-  onWorkflowStep?: (input: { event: string; currentState?: string; initialState?: string }) => Promise<WorkflowStepResponse>;
+  workflowOptions?: Array<{ id: string; name: string }>;
+  workflowId?: string;
+  onWorkflowIdChange?: (next: string) => void;
+  actorId?: string;
+  onActorIdChange?: (next: string) => void;
+  actorRolesInput?: string;
+  onActorRolesInputChange?: (next: string) => void;
+  actorAttrsJson?: string;
+  onActorAttrsJsonChange?: (next: string) => void;
+  onFormIdChange?: (next: string) => void;
+  onListFormsForState?: (workflowState: string) => Promise<Array<{ id: string; title?: string | null }>>;
+  onWorkflowStep?: (input: {
+    event: string;
+    currentState?: string;
+    initialState?: string;
+    workflowId?: string;
+    actorId: string;
+    actorRoles: string[];
+    context?: Record<string, unknown>;
+  }) => Promise<WorkflowStepResponse>;
   getLastRuntimeInfo?: () => { metrics: WorkerRuntimeMetrics | null; diagnostics: DefinitionDiagnostic[] };
 }) {
-  const { formId, onGeneratePackage, onWorkflowStep, getLastRuntimeInfo } = props;
+  const {
+    formId,
+    onGeneratePackage,
+    onWorkflowStep,
+    workflowOptions = [],
+    workflowId,
+    onWorkflowIdChange,
+    actorId,
+    onActorIdChange,
+    actorRolesInput,
+    onActorRolesInputChange,
+    actorAttrsJson,
+    onActorAttrsJsonChange,
+    onFormIdChange,
+    onListFormsForState,
+    getLastRuntimeInfo,
+  } = props;
   const [loading, setLoading] = useState(false);
   const [engineError, setEngineError] = useState<string | null>(null);
   const [pkg, setPkg] = useState<FormPackage | null>(null);
@@ -55,6 +90,30 @@ export default function FormPreview(props: {
   useEffect(() => {
     void handleGenerate({});
   }, [formId]);
+
+  const effectiveWorkflowId =
+    (workflowId ?? '').trim() || (workflowOptions.length === 1 ? workflowOptions[0].id : '');
+  const effectiveActorId = (actorId ?? '').trim() || 'operator-1';
+  const effectiveRolesInput = (actorRolesInput ?? '').trim() || 'user';
+  const effectiveActorAttrsJson = (actorAttrsJson ?? '').trim() || '{}';
+
+  const actorRoles = useMemo(
+    () =>
+      effectiveRolesInput
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean),
+    [effectiveRolesInput],
+  );
+
+  const parsedActorAttrs = useMemo(() => {
+    try {
+      const parsed = JSON.parse(effectiveActorAttrsJson) as unknown;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }, [effectiveActorAttrsJson]);
 
   const schema = pkg?.jsonSchema;
   const properties = schema?.properties ?? {};
@@ -252,6 +311,56 @@ export default function FormPreview(props: {
                 </div>
               </div>
 
+              <div className="px-4 py-3 border-b border-white/5 grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <p className="text-[10px] uppercase text-gray-500">Workflow</p>
+                  {workflowOptions.length > 1 ? (
+                    <select
+                      value={effectiveWorkflowId}
+                      onChange={(e) => onWorkflowIdChange?.(e.target.value)}
+                      aria-label="Workflow selection"
+                      className="mt-2 w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white font-mono"
+                    >
+                      <option value="">(auto)</option>
+                      {workflowOptions.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name || w.id}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-[11px] font-mono text-cyan-300 mt-1">{effectiveWorkflowId || 'none'}</p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <p className="text-[10px] uppercase text-gray-500">Actor</p>
+                  <div className="mt-2 space-y-2">
+                    <input
+                      value={effectiveActorId}
+                      onChange={(e) => onActorIdChange?.(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white font-mono"
+                      placeholder="actorId"
+                    />
+                    <input
+                      value={effectiveRolesInput}
+                      onChange={(e) => onActorRolesInputChange?.(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white font-mono"
+                      placeholder="roles (comma-separated)"
+                    />
+                  </div>
+                </div>
+                <div className="col-span-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <p className="text-[10px] uppercase text-gray-500">Actor attrs (JSON)</p>
+                  <textarea
+                    value={effectiveActorAttrsJson}
+                    onChange={(e) => onActorAttrsJsonChange?.(e.target.value)}
+                    aria-label="Actor attributes JSON"
+                    className="mt-2 w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-[11px] text-white font-mono"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
               <div className="p-4 space-y-4">
                 {layoutGroups.map((group, groupIdx) => (
                   <div key={groupIdx} className="space-y-3">
@@ -392,8 +501,19 @@ export default function FormPreview(props: {
                           event: String(trigger),
                           currentState: workflowStep?.currentState,
                           initialState: workflowStep?.initialState,
+                          workflowId: effectiveWorkflowId || undefined,
+                          actorId: effectiveActorId,
+                          actorRoles,
+                          context: { source: 'form-preview', formId, data: next ? formData : {}, actorAttrs: parsedActorAttrs },
                         });
                         setWorkflowStep(step);
+                        if (onListFormsForState && step?.currentState) {
+                          const recommended = await onListFormsForState(step.currentState);
+                          const nextFormId = recommended?.[0]?.id;
+                          if (nextFormId && nextFormId !== formId) {
+                            onFormIdChange?.(nextFormId);
+                          }
+                        }
                       } catch (err) {
                         setEngineError(err instanceof Error ? err.message : String(err));
                       }

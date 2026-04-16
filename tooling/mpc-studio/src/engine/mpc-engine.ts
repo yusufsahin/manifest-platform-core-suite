@@ -515,6 +515,14 @@ export class MPCEngine {
       }));
   }
 
+  async listFormsForState(dsl: string, workflowState: string): Promise<Array<{ id: string; title?: string | null }>> {
+    const local = await this.postMessage<unknown>({
+      type: 'LIST_FORMS_FOR_STATE',
+      payload: { dsl, workflowState },
+    });
+    return this.unwrapEnvelopePayload<Array<{ id: string; title?: string | null }>>(local);
+  }
+
   async evaluateExpr(expr: string, context?: any, enableTrace: boolean = false): Promise<any> {
     return this.postMessage<any>({ 
       type: 'EVALUATE_EXPR', 

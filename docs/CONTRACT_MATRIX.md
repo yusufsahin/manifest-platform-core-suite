@@ -8,13 +8,13 @@ This document is the single reference for contract shapes, versioning, and mappi
 
 ## 1) Worker envelope (Studio ⇄ Worker)
 
-**Source of truth**
+### Source of truth (Envelope)
 
 - Envelope type: `tooling/mpc-studio/src/types/definition.ts` (`WorkerEnvelope<TPayload>`)
 - Worker emitter: `tooling/mpc-studio/src/engine/worker.ts` (`postEnvelope(...)`)
 - Studio unwrap + metrics: `tooling/mpc-studio/src/engine/mpc-engine.ts` (`unwrapEnvelopePayload(...)`)
 
-**Shape**
+### Shape
 
 ```json
 {
@@ -28,20 +28,20 @@ This document is the single reference for contract shapes, versioning, and mappi
 }
 ```
 
-**Notes**
+### Notes
 
 - `contractVersion` here refers to the **envelope contract** (`DEFINITION_CONTRACT_VERSION`), not the inner payload.
 - Studio uses the envelope to capture metrics + diagnostics consistently across features.
 
 ## 2) Workflow simulation contract
 
-**Source of truth**
+### Source of truth (Workflow)
 
 - Types + version: `tooling/mpc-studio/src/types/workflow.ts` (`WORKFLOW_CONTRACT_VERSION = "1.0.0"`)
 - Local execution: `tooling/mpc-studio/src/engine/worker.ts` (`WORKFLOW_STEP`, `WORKFLOW_RUN`)
 - Remote execution mapping: `tooling/mpc-studio/src/engine/mpc-engine.ts` (`workflowStepRemote`, `workflowRunRemote`)
 
-**Local (Worker → Studio)**
+### Local (Worker → Studio)
 
 - `WORKFLOW_STEP` returns:
 
@@ -66,11 +66,11 @@ This document is the single reference for contract shapes, versioning, and mappi
 }
 ```
 
-**Remote (Runtime → Studio)**
+### Remote (Runtime → Studio)
 
 - `POST /api/v1/rule-artifacts/runtime/workflow/step|run` (via `mpc-engine.ts`) returns **snake_case** which Studio maps to camelCase.
 
-**Error codes**
+### Error codes
 
 - Worker normalizes some workflow codes via `toWorkflowErrorCode(...)` in `tooling/mpc-studio/src/engine/worker.ts`.
 
@@ -78,13 +78,13 @@ This document is the single reference for contract shapes, versioning, and mappi
 
 ### 3.1 Remote runtime endpoint
 
-**Endpoint**
+#### Endpoint
 
 - `POST /api/v1/rule-artifacts/runtime/forms/package`
   - Implementation: `tooling/mpc_runtime/app.py` (`form_package(...)`)
   - Tests: `tooling/mpc-runtime/tests/test_forms_package.py`
 
-**Request**
+#### Request
 
 ```json
 {
@@ -98,12 +98,13 @@ This document is the single reference for contract shapes, versioning, and mappi
 }
 ```
 
-**Response (snake_case)**
+#### Response (snake_case)
 
 ```json
 {
   "request_id": "idem-key-or-uuid",
   "duration_ms": 12,
+  "form_contract_version": "1.0.0",
   "json_schema": { "type": "object", "properties": {} },
   "ui_schema": { "ui:order": [] },
   "field_state": [{ "field_id": "email", "visible": true, "readonly": false }],
@@ -114,14 +115,15 @@ This document is the single reference for contract shapes, versioning, and mappi
 
 ### 3.2 Local worker (Pyodide) contract
 
-**Message**
+#### Message
 
 - Studio → Worker: `type: "GENERATE_FORM_PACKAGE"` in `tooling/mpc-studio/src/engine/mpc-engine.ts`
 
-**Payload returned (camelCase, inside envelope)**
+#### Payload returned (camelCase, inside envelope)
 
 ```json
 {
+  "formContractVersion": "1.0.0",
   "jsonSchema": { "type": "object", "properties": {} },
   "uiSchema": { "ui:order": [] },
   "fieldState": [{ "field_id": "email", "visible": true, "readonly": false }],
@@ -131,11 +133,11 @@ This document is the single reference for contract shapes, versioning, and mappi
 
 ### 3.3 Studio mapping rules (Remote → Local)
 
-**Source**
+#### Source
 
 - `tooling/mpc-studio/src/engine/mpc-engine.ts` (`generateFormPackage(...)`)
 
-**Mapping**
+#### Mapping
 
 - `json_schema` → `jsonSchema`
 - `ui_schema` → `uiSchema`
@@ -168,3 +170,43 @@ Engine emits `x-*` fields (see `src/mpc/features/form/engine.py`):
    - Worker errors are surfaced via envelope diagnostics + controlled payload.
    - Remote errors must conform to `code/message/retryable` contract used by `RemoteRuntimeError` in `mpc-engine.ts`.
 
+## 5) Overlay compose contract (Worker → Studio)
+
+### Source of truth (Overlay)
+
+- Engine: `src/mpc/features/overlay/engine.py` (`OverlayEngine.apply(...)`)
+- Worker bridge: `tooling/mpc-studio/src/engine/worker.ts` (`OVERLAY_COMPOSE`)
+- Studio types: `tooling/mpc-studio/src/types/overlay.ts`
+
+### Result (inside worker envelope payload)
+
+```json
+{
+  "applied": ["merge:policy1", "replace:policy1:attributes.effect"],
+  "conflicts": [{ "code": "E_OVERLAY_CONFLICT", "message": "..." }],
+  "diffs": [
+    {
+      "key": "Policy:p1",
+      "kind": "Policy",
+      "id": "p1",
+      "before": { "attributes": { "effect": "allow" } },
+      "after": { "attributes": { "effect": "deny" } }
+    }
+  ],
+  "trace": [
+    {
+      "overlay_id": "ov1",
+      "op": "replace",
+      "selector": { "kind": "Policy", "namespace": "acme", "id": "p1" },
+      "target_key": "Policy:p1",
+      "path": "attributes.effect",
+      "before": "allow",
+      "after": "deny"
+    }
+  ]
+}
+```
+
+## 6) Strict validation (remote/runtime)
+
+- Remote FormPackage endpoint supports `strict_validation: true` to enforce structural validation of `FormDef/FieldDef` against `FORM_KINDS` (with permissive extra kinds to avoid noise).

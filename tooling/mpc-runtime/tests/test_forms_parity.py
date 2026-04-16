@@ -99,3 +99,35 @@ def test_forms_parity_visibility_readonly_expr() -> None:
 def test_forms_parity_acl_mask_readonly() -> None:
     _assert_parity_case(FIXTURES / "03_acl_mask_readonly")
 
+
+def test_forms_strict_validation_unknown_prop() -> None:
+    dsl = (
+        "@schema 1\n"
+        "@namespace \"t\"\n"
+        "@name \"t\"\n"
+        "@version \"1.0.0\"\n\n"
+        "def FormDef profile \"Profile\" {\n"
+        "  def FieldDef nickname \"Nickname\" { type: \"string\" bogusProp: 1 }\n"
+        "}\n"
+    )
+    payload = {"dsl": dsl, "form_id": "profile", "data": {}, "actor_roles": ["user"], "actor_attrs": {}, "fail_open": True}
+
+    # Remote should reject the manifest shape in strict mode.
+    response = client.post(
+        "/api/v1/rule-artifacts/runtime/forms/package",
+        json={
+            "tenant_id": "t-parity",
+            "source": {"manifest_text": dsl},
+            "form_id": payload["form_id"],
+            "data": payload["data"],
+            "actor_roles": payload["actor_roles"],
+            "actor_attrs": payload["actor_attrs"],
+            "fail_open": payload["fail_open"],
+            "strict_validation": True,
+        },
+        headers={"Idempotency-Key": "req-parity", "X-Tenant-Id": "t-parity"},
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] in ("MANIFEST_INVALID_SHAPE",)
+

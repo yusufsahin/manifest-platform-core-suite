@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field
 from mpc.features.form.engine import FormEngine
 from mpc.features.form import FORM_CONTRACT_VERSION
 from mpc.features.form.kinds import FORM_KINDS
-from mpc.kernel.meta.models import DomainMeta
+from mpc.kernel.meta.models import DomainMeta, KindDef
 from mpc.kernel.parser import parse
+from mpc.tooling.validator.structural import validate_structural
 
 
 app = FastAPI(title="mpc-runtime", version="0.1.0")
@@ -189,6 +190,7 @@ class FormPackageRequest(BaseModel):
     actor_roles: list[str] = Field(default_factory=list)
     actor_attrs: dict[str, Any] = Field(default_factory=dict)
     fail_open: bool | None = None
+    strict_validation: bool | None = None
 
 
 @app.post("/api/v1/rule-artifacts/runtime/forms/package")
@@ -217,7 +219,16 @@ def form_package(
 
         # Run engine
         ast = parse(manifest_text)
-        meta = DomainMeta(kinds=[*FORM_KINDS])
+        kind_names = sorted({str(getattr(node, "kind", "") or "") for node in getattr(ast, "defs", [])})
+        known = {k.name for k in FORM_KINDS}
+        extra = [KindDef(name=name) for name in kind_names if name and name not in known]
+        meta = DomainMeta(kinds=[*FORM_KINDS, *extra])
+
+        if bool(req.strict_validation):
+            errors = validate_structural(ast, meta)
+            if errors:
+                message = "; ".join([e.message for e in errors[:5]])
+                raise_runtime_error("MANIFEST_INVALID_SHAPE", message or "Manifest failed structural validation.", status_code=400)
         engine = FormEngine(ast=ast, meta=meta)
         package = engine.get_form_package(
             req.form_id,

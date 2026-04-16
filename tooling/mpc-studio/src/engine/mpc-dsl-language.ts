@@ -66,15 +66,16 @@ export function registerMpcDslLanguage(monaco: any): void {
 
       const suggestions: any[] = [];
 
-      const getEnclosingDefKind = (): 'FormDef' | 'FieldDef' | null => {
+      const getEnclosingDefKind = (): 'FormDef' | 'FieldDef' | 'Overlay' | null => {
         const maxLookback = 80;
         for (let i = 0; i < maxLookback; i++) {
           const ln = position.lineNumber - i;
           if (ln <= 0) break;
           const text = String(model.getLineContent(ln) ?? '');
-          const m = text.match(/\bdef\s+(FormDef|FieldDef)\b/);
+          const m = text.match(/\bdef\s+(FormDef|FieldDef|Overlay)\b/);
           if (m?.[1] === 'FormDef') return 'FormDef';
           if (m?.[1] === 'FieldDef') return 'FieldDef';
+          if (m?.[1] === 'Overlay') return 'Overlay';
         }
         return null;
       };
@@ -149,6 +150,30 @@ export function registerMpcDslLanguage(monaco: any): void {
             kind: monaco.languages.CompletionItemKind.Property,
             detail: 'FieldDef property',
             insertText: `${p}: `,
+            range,
+          });
+        }
+      }
+
+      if (isKeyPosition && inKind === 'Overlay') {
+        const overlayProps = ['selector', 'target', 'op', 'path', 'values', 'value', 'kind'];
+        for (const p of overlayProps) {
+          suggestions.push({
+            label: `${p}`,
+            kind: monaco.languages.CompletionItemKind.Property,
+            detail: 'Overlay property',
+            insertText: `${p}: `,
+            range,
+          });
+        }
+      }
+
+      if (lineContent.includes('op:')) {
+        for (const op of ['replace', 'merge', 'append', 'remove', 'patch']) {
+          suggestions.push({
+            label: `"${op}"`,
+            kind: monaco.languages.CompletionItemKind.EnumMember,
+            insertText: `"${op}"`,
             range,
           });
         }

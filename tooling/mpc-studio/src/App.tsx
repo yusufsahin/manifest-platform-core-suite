@@ -113,6 +113,11 @@ function App() {
   const [artifactStatusMessage, setArtifactStatusMessage] = useState<string>('');
   const [definitionItems, setDefinitionItems] = useState<DefinitionDescriptor[]>([]);
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<string>('');
+  const [formPreviewFormId, setFormPreviewFormId] = useState<string>('');
+  const [formPreviewWorkflowId, setFormPreviewWorkflowId] = useState<string>('');
+  const [formPreviewActorId, setFormPreviewActorId] = useState<string>('operator-1');
+  const [formPreviewActorRolesInput, setFormPreviewActorRolesInput] = useState<string>('user');
+  const [formPreviewActorAttrsJson, setFormPreviewActorAttrsJson] = useState<string>('{}');
   const validationTimeoutRef = useRef<number | null>(null);
   const queryParams = new URLSearchParams(window.location.search);
   const tenantFromUrl = queryParams.get('tenant_id') || 'tenant-default';
@@ -122,6 +127,11 @@ function App() {
   const selectedDefinition = useMemo(
     () => definitionItems.find((item) => item.id === selectedDefinitionId),
     [definitionItems, selectedDefinitionId],
+  );
+
+  const workflowDefinitions = useMemo(
+    () => definitionItems.filter((d) => d.kind === 'Workflow').map((d) => ({ id: d.id, name: d.name })),
+    [definitionItems],
   );
 
   const menuGroups = useMemo(
@@ -515,7 +525,8 @@ function App() {
     }
     if (sidebarTab === 'form-preview') {
       const selectedFormId = selectedDefinition?.kind === 'FormDef' ? selectedDefinition.id : '';
-      const formId = selectedFormId || (definitionItems.find((d) => d.kind === 'FormDef')?.id ?? '');
+      const defaultFormId = selectedFormId || (definitionItems.find((d) => d.kind === 'FormDef')?.id ?? '');
+      const formId = formPreviewFormId || defaultFormId;
       if (!formId) {
         return (
           <DefinitionInspector
@@ -527,6 +538,17 @@ function App() {
       return (
         <FormPreview
           formId={formId}
+          workflowOptions={workflowDefinitions}
+          workflowId={formPreviewWorkflowId}
+          onWorkflowIdChange={setFormPreviewWorkflowId}
+          actorId={formPreviewActorId}
+          onActorIdChange={setFormPreviewActorId}
+          actorRolesInput={formPreviewActorRolesInput}
+          onActorRolesInputChange={setFormPreviewActorRolesInput}
+          actorAttrsJson={formPreviewActorAttrsJson}
+          onActorAttrsJsonChange={setFormPreviewActorAttrsJson}
+          onFormIdChange={setFormPreviewFormId}
+          onListFormsForState={async (workflowState) => mpcEngine.listFormsForState(dsl, workflowState)}
           onGeneratePackage={async ({ formId: requestedId, data }) =>
             mpcEngine.generateFormPackage({
               dsl,
@@ -537,15 +559,16 @@ function App() {
               artifactId: selectedArtifactId || undefined,
             })
           }
-          onWorkflowStep={async ({ event, currentState, initialState }) =>
+          onWorkflowStep={async ({ event, currentState, initialState, workflowId, actorId, actorRoles, context }) =>
             mpcEngine.workflowStep({
               dsl,
+              workflowId: workflowId || undefined,
               event,
-              context: { source: 'form-preview', formId } as any,
+              context: context ?? ({ source: 'form-preview', formId } as any),
               currentState,
               initialState,
-              actorId: 'form-preview',
-              actorRoles: ['user'],
+              actorId,
+              actorRoles,
               tenantId: tenantFromUrl,
               useTenantActiveManifest,
               artifactId: selectedArtifactId || undefined,

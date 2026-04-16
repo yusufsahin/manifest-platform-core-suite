@@ -16,9 +16,20 @@ export type OverlayNodeDiff = {
   after: Record<string, unknown>;
 };
 
+export type OverlayTraceEntry = {
+  overlay_id: string;
+  op: string;
+  selector?: { kind?: string | null; namespace?: string | null; id?: string | null } | null;
+  target_key: string;
+  path?: string | null;
+  before: unknown;
+  after: unknown;
+};
+
 export type OverlayComposeResult = {
   applied: string[];
   conflicts: OverlayConflict[];
+  trace?: OverlayTraceEntry[];
   overlays: OverlayDefinitionSummary[];
   diffs: OverlayNodeDiff[];
 };
