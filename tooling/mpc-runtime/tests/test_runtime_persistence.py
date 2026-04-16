@@ -247,3 +247,120 @@ def test_legacy_activate_endpoint_is_deprecated() -> None:
     assert resp.status_code == 410
     assert resp.json()["detail"]["code"] == "E_RUNTIME_DEPRECATED"
 
+
+def test_mode_idempotency_dedupes() -> None:
+    client, _, _ = _client_with_shared_store()
+    r1 = client.post(
+        "/api/v1/tenants/t1/activation/mode",
+        json={"mode": "policy-off"},
+        headers={"X-Actor-Roles": "admin", "Idempotency-Key": "mode-1"},
+    )
+    assert r1.status_code == 200
+    body1 = r1.json()
+    r2 = client.post(
+        "/api/v1/tenants/t1/activation/mode",
+        json={"mode": "policy-off"},
+        headers={"X-Actor-Roles": "admin", "Idempotency-Key": "mode-1"},
+    )
+    assert r2.status_code == 200
+    assert r2.json() == body1
+
+
+def test_lifecycle_idempotency_dedupes() -> None:
+    client, _, _ = _client_with_shared_store()
+    create = client.post("/api/v1/rule-artifacts", json={"tenant_id": "t1", "manifest_text": DSL, "signature": None})
+    artifact_id = create.json()["id"]
+
+    r1 = client.post(
+        f"/api/v1/rule-artifacts/{artifact_id}/lifecycle/submit_review?tenant_id=t1",
+        headers={"X-Actor-Roles": "author", "Idempotency-Key": "lc-1"},
+    )
+    assert r1.status_code == 200
+    r2 = client.post(
+        f"/api/v1/rule-artifacts/{artifact_id}/lifecycle/submit_review?tenant_id=t1",
+        headers={"X-Actor-Roles": "author", "Idempotency-Key": "lc-1"},
+    )
+    assert r2.status_code == 200
+    assert r2.json() == r1.json()
+
+
+def _publish_two_artifacts(client: TestClient) -> tuple[str, str]:
+    a = client.post("/api/v1/rule-artifacts", json={"tenant_id": "t1", "manifest_text": DSL})
+    dsl_b = DSL.replace('def FieldDef email { type: "string" required: true }', 'def FieldDef email { type: "string" required: true }\n  def FieldDef name { type: "string" }')
+    b = client.post("/api/v1/rule-artifacts", json={"tenant_id": "t1", "manifest_text": dsl_b})
+    a_id = a.json()["id"]
+    b_id = b.json()["id"]
+    for artifact_id in (a_id, b_id):
+        client.post(
+            f"/api/v1/rule-artifacts/{artifact_id}/lifecycle/submit_review?tenant_id=t1",
+            headers={"X-Actor-Roles": "author"},
+        )
+        client.post(
+            f"/api/v1/rule-artifacts/{artifact_id}/lifecycle/approve?tenant_id=t1",
+            headers={"X-Actor-Roles": "reviewer"},
+        )
+        client.post(
+            f"/api/v1/rule-artifacts/{artifact_id}/lifecycle/publish?tenant_id=t1",
+            headers={"X-Actor-Roles": "publisher"},
+        )
+    return a_id, b_id
+
+
+def test_canary_idempotency_dedupes() -> None:
+    client, _, _ = _client_with_shared_store()
+    a_id, b_id = _publish_two_artifacts(client)
+    client.post(
+        "/api/v1/tenants/t1/activation/activate",
+        json={"artifact_id": a_id, "enterprise_mode": False},
+        headers={"X-Actor-Roles": "deployer"},
+    )
+    h = {"X-Actor-Roles": "deployer", "Idempotency-Key": "canary-idem-1"}
+    body = {"artifact_id": b_id, "weight": 0.5}
+    r1 = client.post("/api/v1/tenants/t1/activation/canary", json=body, headers=h)
+    assert r1.status_code == 200
+    r2 = client.post("/api/v1/tenants/t1/activation/canary", json=body, headers=h)
+    assert r2.status_code == 200
+    assert r2.json() == r1.json()
+
+
+def test_promote_canary_idempotency_dedupes() -> None:
+    client, _, _ = _client_with_shared_store()
+    a_id, b_id = _publish_two_artifacts(client)
+    client.post(
+        "/api/v1/tenants/t1/activation/activate",
+        json={"artifact_id": a_id, "enterprise_mode": False},
+        headers={"X-Actor-Roles": "deployer"},
+    )
+    client.post(
+        "/api/v1/tenants/t1/activation/canary",
+        json={"artifact_id": b_id, "weight": 1.0},
+        headers={"X-Actor-Roles": "deployer"},
+    )
+    h = {"X-Actor-Roles": "deployer", "Idempotency-Key": "promote-idem-1"}
+    r1 = client.post("/api/v1/tenants/t1/activation/promote-canary", headers=h)
+    assert r1.status_code == 200
+    r2 = client.post("/api/v1/tenants/t1/activation/promote-canary", headers=h)
+    assert r2.status_code == 200
+    assert r2.json() == r1.json()
+
+
+def test_rollback_idempotency_dedupes() -> None:
+    client, _, _ = _client_with_shared_store()
+    a_id, b_id = _publish_two_artifacts(client)
+    client.post(
+        "/api/v1/tenants/t1/activation/activate",
+        json={"artifact_id": a_id, "enterprise_mode": False},
+        headers={"X-Actor-Roles": "deployer"},
+    )
+    client.post(
+        "/api/v1/tenants/t1/activation/activate",
+        json={"artifact_id": b_id, "enterprise_mode": False},
+        headers={"X-Actor-Roles": "deployer"},
+    )
+    h = {"X-Actor-Roles": "deployer", "Idempotency-Key": "rollback-idem-1"}
+    r1 = client.post("/api/v1/tenants/t1/activation/rollback", headers=h)
+    assert r1.status_code == 200
+    r2 = client.post("/api/v1/tenants/t1/activation/rollback", headers=h)
+    assert r2.status_code == 200
+    assert r2.json() == r1.json()
+

@@ -68,8 +68,14 @@ def _resolve_actor(
     token = parse_bearer_token(authorization)
     if not token:
         raise_runtime_error("E_RUNTIME_FORBIDDEN", "Missing bearer token.", status_code=403)
-    principal = verify_jwt(token=token, cfg=cfg)
-    ctx = context_from_jwt(principal)
+    try:
+        principal = verify_jwt(token=token, cfg=cfg)
+    except Exception as exc:
+        raise_runtime_error("E_RUNTIME_FORBIDDEN", f"Invalid bearer token: {exc}", status_code=403)
+    try:
+        ctx = context_from_jwt(principal)
+    except Exception as exc:
+        raise_runtime_error("E_RUNTIME_FORBIDDEN", f"Invalid token claims: {exc}", status_code=403)
     if req_tenant_id and str(req_tenant_id).strip() and ctx.tenant_id != str(req_tenant_id).strip():
         raise_runtime_error("E_RUNTIME_FORBIDDEN", "tenant_id does not match token tenant.", status_code=403)
     if x_tenant_id and str(x_tenant_id).strip() and ctx.tenant_id != str(x_tenant_id).strip():
@@ -410,6 +416,11 @@ def lifecycle_action(
         art = store.get_artifact(tenant_id=tenant_id, artifact_id=artifact_id)
     except KeyError:
         raise_runtime_error("E_RUNTIME_NOT_FOUND", f"Artifact '{artifact_id}' not found.", status_code=404)
+
+    if idempotency_key:
+        cached = store.idempotency_get(tenant_id=tenant_id, key=idempotency_key)
+        if cached is not None:
+            return cached
 
     current = str(art.status)
     desired = {
@@ -828,9 +839,12 @@ def promote_canary(
         payload = activate_artifact(
             tenant_id,
             ActivationRequest(artifact_id=canary_cfg.artifact_id, enterprise_mode=False),
-            None,
-            x_actor_roles,
-        )  # type: ignore[arg-type]
+            idempotency_key=None,
+            x_actor_roles=x_actor_roles,
+            authorization=None,
+            x_tenant_id=None,
+            x_actor_id=None,
+        )
         store.set_canary(tenant_id=tenant_id, artifact_id=None, weight=None)
         payload["promoted_from_canary"] = True
         _audit_record(
@@ -876,9 +890,12 @@ def rollback(
         payload = activate_artifact(
             tenant_id,
             ActivationRequest(artifact_id=prev, enterprise_mode=False),
-            None,
-            x_actor_roles,
-        )  # type: ignore[arg-type]
+            idempotency_key=None,
+            x_actor_roles=x_actor_roles,
+            authorization=None,
+            x_tenant_id=None,
+            x_actor_id=None,
+        )
         payload["rolled_back"] = True
         _audit_record(
             tenant_id,

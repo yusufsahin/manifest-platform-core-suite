@@ -126,3 +126,157 @@ def test_jwt_auth_rejects_missing_token() -> None:
     assert r.json()["detail"]["code"] == "E_RUNTIME_FORBIDDEN"
     mp.undo()
 
+
+def test_jwt_auth_rejects_insufficient_roles_for_admin_action() -> None:
+    """deployer-only token cannot set activation mode (admin required)."""
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(RSAAlgorithm.to_jwk(priv.public_key()))
+    jwk["kid"] = "k1"
+    jwks = {"keys": [jwk]}
+    token = jwt.encode({"tenant_id": "t1", "roles": ["deployer"], "sub": "u1"}, key=priv, algorithm="RS256", headers={"kid": "k1"})
+
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    blobs = tempfile.TemporaryDirectory()
+    try:
+        mp.setenv("MPC_RUNTIME_AUTH_MODE", "jwt")
+        mp.setenv("MPC_RUNTIME_JWKS_JSON", json.dumps(jwks))
+        mp.setenv("MPC_RUNTIME_BLOB_DIR", blobs.name)
+        app.state.runtime_store = _redis_store()
+        if hasattr(app.state, "blob_store"):
+            delattr(app.state, "blob_store")
+        client = TestClient(app)
+
+        r = client.post(
+            "/api/v1/tenants/t1/activation/mode",
+            json={"mode": "policy-off"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "E_RUNTIME_FORBIDDEN"
+    finally:
+        mp.undo()
+
+
+def test_jwt_auth_rejects_bad_kid() -> None:
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(RSAAlgorithm.to_jwk(priv.public_key()))
+    jwk["kid"] = "k1"
+    jwks = {"keys": [jwk]}
+    token = jwt.encode({"tenant_id": "t1", "roles": ["auditor"], "sub": "u1"}, key=priv, algorithm="RS256", headers={"kid": "wrong-kid"})
+
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    blobs = tempfile.TemporaryDirectory()
+    try:
+        mp.setenv("MPC_RUNTIME_AUTH_MODE", "jwt")
+        mp.setenv("MPC_RUNTIME_JWKS_JSON", json.dumps(jwks))
+        mp.setenv("MPC_RUNTIME_BLOB_DIR", blobs.name)
+        app.state.runtime_store = _redis_store()
+        if hasattr(app.state, "blob_store"):
+            delattr(app.state, "blob_store")
+        client = TestClient(app)
+
+        r = client.get("/api/v1/tenants/t1/activation/status", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "E_RUNTIME_FORBIDDEN"
+        assert "Invalid bearer token" in r.json()["detail"]["message"]
+    finally:
+        mp.undo()
+
+
+def test_jwt_auth_rejects_wrong_audience() -> None:
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(RSAAlgorithm.to_jwk(priv.public_key()))
+    jwk["kid"] = "k1"
+    jwks = {"keys": [jwk]}
+    token = jwt.encode(
+        {"tenant_id": "t1", "roles": ["auditor"], "sub": "u1", "aud": "expected-aud"},
+        key=priv,
+        algorithm="RS256",
+        headers={"kid": "k1"},
+    )
+
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    blobs = tempfile.TemporaryDirectory()
+    try:
+        mp.setenv("MPC_RUNTIME_AUTH_MODE", "jwt")
+        mp.setenv("MPC_RUNTIME_JWKS_JSON", json.dumps(jwks))
+        mp.setenv("MPC_RUNTIME_JWT_AUDIENCE", "wrong-aud")
+        mp.setenv("MPC_RUNTIME_BLOB_DIR", blobs.name)
+        app.state.runtime_store = _redis_store()
+        if hasattr(app.state, "blob_store"):
+            delattr(app.state, "blob_store")
+        client = TestClient(app)
+
+        r = client.get("/api/v1/tenants/t1/activation/status", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "E_RUNTIME_FORBIDDEN"
+    finally:
+        mp.undo()
+
+
+def test_jwt_auth_rejects_wrong_issuer() -> None:
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(RSAAlgorithm.to_jwk(priv.public_key()))
+    jwk["kid"] = "k1"
+    jwks = {"keys": [jwk]}
+    token = jwt.encode(
+        {"tenant_id": "t1", "roles": ["auditor"], "sub": "u1", "iss": "https://issuer.example"},
+        key=priv,
+        algorithm="RS256",
+        headers={"kid": "k1"},
+    )
+
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    blobs = tempfile.TemporaryDirectory()
+    try:
+        mp.setenv("MPC_RUNTIME_AUTH_MODE", "jwt")
+        mp.setenv("MPC_RUNTIME_JWKS_JSON", json.dumps(jwks))
+        mp.setenv("MPC_RUNTIME_JWT_ISSUER", "https://other.example")
+        mp.setenv("MPC_RUNTIME_BLOB_DIR", blobs.name)
+        app.state.runtime_store = _redis_store()
+        if hasattr(app.state, "blob_store"):
+            delattr(app.state, "blob_store")
+        client = TestClient(app)
+
+        r = client.get("/api/v1/tenants/t1/activation/status", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "E_RUNTIME_FORBIDDEN"
+    finally:
+        mp.undo()
+
+
+def test_jwt_auth_rejects_missing_tenant_claim() -> None:
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(RSAAlgorithm.to_jwk(priv.public_key()))
+    jwk["kid"] = "k1"
+    jwks = {"keys": [jwk]}
+    token = jwt.encode({"roles": ["auditor"], "sub": "u1"}, key=priv, algorithm="RS256", headers={"kid": "k1"})
+
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    blobs = tempfile.TemporaryDirectory()
+    try:
+        mp.setenv("MPC_RUNTIME_AUTH_MODE", "jwt")
+        mp.setenv("MPC_RUNTIME_JWKS_JSON", json.dumps(jwks))
+        mp.setenv("MPC_RUNTIME_BLOB_DIR", blobs.name)
+        app.state.runtime_store = _redis_store()
+        if hasattr(app.state, "blob_store"):
+            delattr(app.state, "blob_store")
+        client = TestClient(app)
+
+        r = client.get("/api/v1/tenants/t1/activation/status", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "E_RUNTIME_FORBIDDEN"
+        assert "Invalid token claims" in r.json()["detail"]["message"]
+    finally:
+        mp.undo()
+
