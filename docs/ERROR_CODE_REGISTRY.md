@@ -3,11 +3,13 @@
 All produced errors MUST use codes in this registry. Unknown codes MUST fail conformance.
 
 ## Parse
+
 - E_PARSE_SYNTAX
 - E_PARSE_INVALID_TOKEN
 - E_PARSE_UNSUPPORTED_FORMAT
 
 ## Meta
+
 - E_META_UNKNOWN_KIND
 - E_META_MISSING_REQUIRED_FIELD
 - E_META_TYPE_NOT_ALLOWED
@@ -15,6 +17,7 @@ All produced errors MUST use codes in this registry. Unknown codes MUST fail con
 - E_META_BREAKING_CHANGE
 
 ## Validation
+
 - E_VALID_DUPLICATE_DEF
 - E_VALID_UNRESOLVED_REF
 - E_VALID_CYCLE_DETECTED
@@ -22,6 +25,7 @@ All produced errors MUST use codes in this registry. Unknown codes MUST fail con
 - E_VALID_INVALID_WORKFLOW
 
 ## Expr
+
 - E_EXPR_TYPE_MISMATCH
 - E_EXPR_UNKNOWN_FUNCTION
 - E_EXPR_LIMIT_DEPTH
@@ -31,6 +35,7 @@ All produced errors MUST use codes in this registry. Unknown codes MUST fail con
 - E_BUDGET_EXCEEDED
 
 ## Workflow
+
 - E_WF_NO_INITIAL
 - E_WF_UNKNOWN_STATE
 - E_WF_UNKNOWN_TRANSITION
@@ -38,19 +43,23 @@ All produced errors MUST use codes in this registry. Unknown codes MUST fail con
 - E_WF_AUTH_DENIED
 
 ## Policy
+
 - E_POLICY_INVALID_MATCHER
 - E_POLICY_INVALID_TEMPLATE
 
 ## ACL
+
 - E_ACL_INVALID_RULE
 - E_ACL_UNKNOWN_ACTION
 
 ## Overlay
+
 - E_OVERLAY_CONFLICT
 - E_OVERLAY_UNKNOWN_SELECTOR
 - E_OVERLAY_INVALID_OP
 
 ## Governance / Enterprise
+
 - E_GOV_SIGNATURE_REQUIRED
 - E_GOV_SIGNATURE_INVALID
 - E_GOV_ATTESTATION_MISSING
@@ -58,10 +67,12 @@ All produced errors MUST use codes in this registry. Unknown codes MUST fail con
 - E_QUOTA_EXCEEDED
 
 ## Runtime (Remote API)
+
 - E_RUNTIME_NOT_FOUND
 - E_RUNTIME_FORBIDDEN
 - E_RUNTIME_ACTIVE_REQUIRED
 - E_RUNTIME_INTERNAL
+- E_RUNTIME_DEPRECATED
 
 ## Reason Codes (R\_\*)
 

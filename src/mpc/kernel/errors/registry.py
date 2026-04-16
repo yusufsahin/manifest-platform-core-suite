@@ -69,6 +69,7 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_RUNTIME_FORBIDDEN",
     "E_RUNTIME_ACTIVE_REQUIRED",
     "E_RUNTIME_INTERNAL",
+    "E_RUNTIME_DEPRECATED",
 })
 
 REASON_CODES: frozenset[str] = frozenset({

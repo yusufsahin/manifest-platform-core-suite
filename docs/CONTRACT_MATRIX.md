@@ -84,6 +84,22 @@ This document is the single reference for contract shapes, versioning, and mappi
   - Implementation: `tooling/mpc_runtime/app.py` (`form_package(...)`)
   - Tests: `tooling/mpc-runtime/tests/test_forms_package.py`
 
+#### Authentication / Authorization (remote runtime)
+
+Remote runtime supports two auth modes (feature-flagged):
+
+- **Header mode (dev compatibility)**: `MPC_RUNTIME_AUTH_MODE=header` (default)
+  - Tenant source: request `tenant_id` or `X-Tenant-Id`
+  - Roles source: `X-Actor-Roles: role1,role2`
+  - Actor id: `X-Actor-Id`
+- **JWT mode (prod)**: `MPC_RUNTIME_AUTH_MODE=jwt`
+  - Requires `Authorization: Bearer <JWT>`
+  - Tenant is derived from token claims (`tenant_id` or `tid`) and MUST match request tenant.
+  - Roles are derived from token claims (`roles` or `role`).
+  - JWKS source:
+    - `MPC_RUNTIME_JWKS_JSON` (inline JSON) or
+    - `MPC_RUNTIME_JWKS_URL` (fetched + cached)
+
 #### Request
 
 ```json
