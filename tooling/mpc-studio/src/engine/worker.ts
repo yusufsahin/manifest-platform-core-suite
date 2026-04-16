@@ -469,6 +469,31 @@ json.dumps({"items": items})
       } finally {
         safeDeleteGlobal(py, 'MPC_INPUT_DSL');
       }
+    } else if (type === 'LIST_FORMS_FOR_STATE') {
+      const { dsl, workflowState } = payload as { dsl: string; workflowState: string };
+      py.globals.set('FORM_DSL', dsl);
+      py.globals.set('FORM_STATE', workflowState);
+      try {
+        const raw = await py.runPythonAsync(`
+import json
+from mpc.kernel.parser import parse
+from mpc.features.form.engine import FormEngine
+from mpc.features.form.kinds import FORM_KINDS
+from mpc.kernel.meta.models import DomainMeta
+
+ast = parse(FORM_DSL)
+meta = DomainMeta(kinds=FORM_KINDS)
+engine = FormEngine(ast=ast, meta=meta)
+items = []
+for f in engine.get_forms_for_state(str(FORM_STATE or "")):
+  items.append({"id": f.id, "title": f.title})
+json.dumps(items)
+        `);
+        postEnvelope(id, 'LIST_FORMS_FOR_STATE', requestId, JSON.parse(raw as string), startedAt);
+      } finally {
+        safeDeleteGlobal(py, 'FORM_DSL');
+        safeDeleteGlobal(py, 'FORM_STATE');
+      }
     } else if (type === 'PREVIEW_DEFINITION') {
       const payloadData = payload as { dsl: string; definitionId?: string; kindHint?: string };
       py.globals.set('MPC_INPUT_DSL', payloadData.dsl);
@@ -1601,6 +1626,7 @@ for o in overlay_defs:
 json.dumps({
   "applied": list(res.applied),
   "conflicts": [{"code": c.code, "message": c.message} for c in res.conflicts],
+  "trace": list(getattr(res, "trace", []) or []),
   "overlays": overlays,
   "diffs": diffs,
 })

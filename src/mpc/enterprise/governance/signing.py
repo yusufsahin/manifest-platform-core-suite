@@ -85,3 +85,64 @@ def verify_bundle_data(
                 severity="error",
             ),
         )
+
+
+def verify_jwt_payload_hash(
+    *,
+    token: str,
+    payload_hash: str,
+    jwks: dict[str, Any],
+    algorithms: list[str] | None = None,
+) -> SignatureResult:
+    """Verify a JWT/JWS signature against a JWKS and ensure payload_hash matches.
+
+    Contract:
+    - token MUST include a `kid` header
+    - token payload MUST include `payload_hash`
+    """
+    try:
+        import jwt  # PyJWT
+        from jwt.algorithms import RSAAlgorithm
+
+        header = jwt.get_unverified_header(token)
+        kid = header.get("kid")
+        if not kid:
+            return SignatureResult(
+                valid=False,
+                error=Error(code="E_GOV_SIGNATURE_INVALID", message="Missing kid in JWT header", severity="error"),
+            )
+        keys = jwks.get("keys", []) if isinstance(jwks, dict) else []
+        key_obj = None
+        for k in keys:
+            if isinstance(k, dict) and k.get("kid") == kid:
+                key_obj = k
+                break
+        if not key_obj:
+            return SignatureResult(
+                valid=False,
+                error=Error(code="E_GOV_SIGNATURE_INVALID", message=f"Unknown kid '{kid}'", severity="error"),
+            )
+        public_key = RSAAlgorithm.from_jwk(_json_dumps(key_obj))
+        decoded = jwt.decode(
+            token,
+            key=public_key,
+            algorithms=algorithms or ["RS256"],
+            options={"verify_aud": False},
+        )
+        if decoded.get("payload_hash") != payload_hash:
+            return SignatureResult(
+                valid=False,
+                error=Error(code="E_GOV_SIGNATURE_INVALID", message="payload_hash mismatch", severity="error"),
+            )
+        return SignatureResult(valid=True, algorithm=str(header.get("alg") or "RS256"), signer=str(kid))
+    except Exception as exc:
+        return SignatureResult(
+            valid=False,
+            error=Error(code="E_GOV_SIGNATURE_INVALID", message=str(exc), severity="error"),
+        )
+
+
+def _json_dumps(obj: Any) -> str:
+    import json
+
+    return json.dumps(obj, separators=(",", ":"), sort_keys=True)

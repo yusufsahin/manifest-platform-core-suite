@@ -37,6 +37,9 @@ class ImportResolver:
 
     manifests: dict[str, ManifestAST] = field(default_factory=dict)
     versions: dict[str, str] = field(default_factory=dict)
+    allowed_sources: set[str] | None = None
+    max_imports: int = 100
+    max_total_defs: int = 5000
 
     def register(self, name: str, ast: ManifestAST, version: str = "0.0.0") -> None:
         """Register a manifest as available for import."""
@@ -50,6 +53,15 @@ class ImportResolver:
         imported_defs: list[ASTNode] = []
 
         import_specs = self._extract_imports(base)
+        if len(import_specs) > self.max_imports:
+            errors.append(
+                Error(
+                    code="E_QUOTA_EXCEEDED",
+                    message=f"Import quota exceeded (limit: {self.max_imports})",
+                    severity="error",
+                )
+            )
+            return ImportResult(ast=base, errors=errors)
 
         # Cycle detection
         visited: set[str] = {base.namespace}
@@ -61,6 +73,15 @@ class ImportResolver:
         base_ids: set[tuple[str, str]] = {(d.kind, d.id) for d in base.defs}
 
         for spec in import_specs:
+            if self.allowed_sources is not None and spec.source not in self.allowed_sources:
+                errors.append(
+                    Error(
+                        code="E_VALID_UNRESOLVED_REF",
+                        message=f"Import source '{spec.source}' is not in allowlist",
+                        severity="error",
+                    )
+                )
+                continue
             source_ast = self.manifests.get(spec.source)
             if source_ast is None:
                 errors.append(Error(
@@ -112,6 +133,17 @@ class ImportResolver:
             resolved.append(spec.source)
 
         merged_defs = list(base.defs) + imported_defs
+        if len(merged_defs) > self.max_total_defs:
+            return ImportResult(
+                ast=base,
+                errors=[
+                    Error(
+                        code="E_QUOTA_EXCEEDED",
+                        message=f"Definition quota exceeded (limit: {self.max_total_defs})",
+                        severity="error",
+                    )
+                ],
+            )
         merged_ast = ManifestAST(
             schema_version=base.schema_version,
             namespace=base.namespace,

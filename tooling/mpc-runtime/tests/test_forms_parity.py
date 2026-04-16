@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import uuid
 from pathlib import Path
 from typing import Any
 
+import pytest
+import redis
 from fastapi.testclient import TestClient
 
 from mpc.features.form import FORM_CONTRACT_VERSION
@@ -12,8 +16,20 @@ from mpc.features.form.kinds import FORM_KINDS
 from mpc.kernel.meta.models import DomainMeta
 from mpc.kernel.parser import parse
 from tooling.mpc_runtime.app import app
+from tooling.mpc_runtime.storage.redis_store import RedisRuntimeStore
 
 
+def _configure_real_redis_store() -> None:
+    url = os.environ.get("MPC_RUNTIME_REDIS_URL", "redis://localhost:6379/0")
+    try:
+        r = redis.Redis.from_url(url, decode_responses=False)
+        r.ping()
+    except Exception:
+        pytest.skip("Real Redis not available; set MPC_RUNTIME_REDIS_URL to run runtime parity tests.", allow_module_level=True)
+    app.state.runtime_store = RedisRuntimeStore(redis=r, prefix=f"mpc_runtime_test:{uuid.uuid4().hex}")
+
+
+_configure_real_redis_store()
 client = TestClient(app)
 
 
@@ -98,4 +114,36 @@ def test_forms_parity_visibility_readonly_expr() -> None:
 
 def test_forms_parity_acl_mask_readonly() -> None:
     _assert_parity_case(FIXTURES / "03_acl_mask_readonly")
+
+
+def test_forms_strict_validation_unknown_prop() -> None:
+    dsl = (
+        "@schema 1\n"
+        "@namespace \"t\"\n"
+        "@name \"t\"\n"
+        "@version \"1.0.0\"\n\n"
+        "def FormDef profile \"Profile\" {\n"
+        "  def FieldDef nickname \"Nickname\" { type: \"string\" bogusProp: 1 }\n"
+        "}\n"
+    )
+    payload = {"dsl": dsl, "form_id": "profile", "data": {}, "actor_roles": ["user"], "actor_attrs": {}, "fail_open": True}
+
+    # Remote should reject the manifest shape in strict mode.
+    response = client.post(
+        "/api/v1/rule-artifacts/runtime/forms/package",
+        json={
+            "tenant_id": "t-parity",
+            "source": {"manifest_text": dsl},
+            "form_id": payload["form_id"],
+            "data": payload["data"],
+            "actor_roles": payload["actor_roles"],
+            "actor_attrs": payload["actor_attrs"],
+            "fail_open": payload["fail_open"],
+            "strict_validation": True,
+        },
+        headers={"Idempotency-Key": "req-parity", "X-Tenant-Id": "t-parity"},
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] in ("MANIFEST_INVALID_SHAPE",)
 

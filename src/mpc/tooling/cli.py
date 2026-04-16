@@ -2,6 +2,9 @@ import sys
 import argparse
 import json
 from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
 from mpc.kernel.parser import parse
 from mpc.tooling.validator.structural import validate_structural
 from mpc.tooling.validator.semantic import validate_semantic
@@ -59,14 +62,40 @@ def main():
     ac_parser = subparsers.add_parser("activate", help="Simulate manifest activation")
     ac_parser.add_argument("file", help="Bundle or manifest file")
     ac_parser.add_argument("--key", help="Secret key for verification")
+    ac_parser.add_argument("--runtime-url", help="Runtime base URL (e.g. http://127.0.0.1:8000)")
+    ac_parser.add_argument("--tenant-id", help="Tenant id (required with --runtime-url)")
+    ac_parser.add_argument("--enterprise-mode", action="store_true", help="Enterprise mode (signature required)")
+    ac_parser.add_argument("--signature", help="Signature string to store on artifact (runtime mode)")
+    ac_parser.add_argument("--idempotency-key", help="Idempotency-Key header value (runtime mode)")
 
     # Rollout
     ro_parser = subparsers.add_parser("rollout", help="Manage canary rollout")
     ro_parser.add_argument("bundle", help="Bundle hash or file")
     ro_parser.add_argument("--weight", type=float, default=0.1, help="Canary weight (0.0-1.0)")
+    ro_parser.add_argument("--runtime-url", help="Runtime base URL (e.g. http://127.0.0.1:8000)")
+    ro_parser.add_argument("--tenant-id", help="Tenant id (required with --runtime-url)")
+    ro_parser.add_argument("--signature", help="Signature string to store on artifact (runtime mode)")
 
     # Status
     st_parser = subparsers.add_parser("status", help="Show current platform status")
+    st_parser.add_argument("--runtime-url", help="Runtime base URL (e.g. http://127.0.0.1:8000)")
+    st_parser.add_argument("--tenant-id", help="Tenant id (required with --runtime-url)")
+
+    # Promote canary
+    pc_parser = subparsers.add_parser("promote-canary", help="Promote canary to active (runtime mode)")
+    pc_parser.add_argument("--runtime-url", required=True, help="Runtime base URL (e.g. http://127.0.0.1:8000)")
+    pc_parser.add_argument("--tenant-id", required=True, help="Tenant id")
+
+    # Rollback
+    rb_parser = subparsers.add_parser("rollback", help="Rollback to previous active (runtime mode)")
+    rb_parser.add_argument("--runtime-url", required=True, help="Runtime base URL (e.g. http://127.0.0.1:8000)")
+    rb_parser.add_argument("--tenant-id", required=True, help="Tenant id")
+
+    # Mode
+    md_parser = subparsers.add_parser("set-mode", help="Set activation mode (runtime mode)")
+    md_parser.add_argument("--runtime-url", required=True, help="Runtime base URL (e.g. http://127.0.0.1:8000)")
+    md_parser.add_argument("--tenant-id", required=True, help="Tenant id")
+    md_parser.add_argument("--mode", required=True, choices=["normal", "policy-off", "read-only", "kill-switch"])
 
     # Approve
     ap_parser = subparsers.add_parser("approve", help="Approve a pending manifest")
@@ -98,12 +127,18 @@ def main():
     elif args.command == "status":
         _run_status(args)
         sys.exit(0)
-    elif args.command in ("rollout", "approve"):
+    elif args.command in ("rollout", "approve", "promote-canary", "rollback", "set-mode"):
         try:
             if args.command == "rollout":
                 _run_rollout(args)
-            else:
+            elif args.command == "approve":
                 _run_approve(args)
+            elif args.command == "promote-canary":
+                _run_promote_canary(args)
+            elif args.command == "rollback":
+                _run_rollback(args)
+            elif args.command == "set-mode":
+                _run_set_mode(args)
         except Exception as e:
             print(f"Unexpected error: {e}", file=sys.stderr)
             sys.exit(1)
@@ -392,6 +427,41 @@ def _run_bundle(args):
     print(json.dumps(bundle, indent=2))
 
 def _run_activate(args):
+    if getattr(args, "runtime_url", None):
+        if not args.tenant_id:
+            raise RuntimeError("--tenant-id is required with --runtime-url")
+        raw = Path(args.file).read_text(encoding="utf-8")
+        signature = getattr(args, "signature", None)
+        if signature is None and getattr(args, "key", None):
+            from mpc.enterprise.governance.signing import HMACSigningPort
+            signature = HMACSigningPort(str(args.key)).sign(raw.encode("utf-8"))
+        created = _runtime_post(
+            args.runtime_url,
+            "/api/v1/rule-artifacts",
+            {"tenant_id": args.tenant_id, "manifest_text": raw, "signature": signature},
+        )
+        artifact_id = created.get("id")
+        if not artifact_id:
+            raise RuntimeError(f"Runtime did not return artifact id: {created}")
+        headers: dict[str, str] = {}
+        if getattr(args, "idempotency_key", None):
+            headers["Idempotency-Key"] = str(args.idempotency_key)
+        res = _runtime_post(
+            args.runtime_url,
+            f"/api/v1/tenants/{args.tenant_id}/activation/activate",
+            {
+                "artifact_id": artifact_id,
+                "enterprise_mode": bool(getattr(args, "enterprise_mode", False)),
+                "verification": (
+                    {"algorithm": "hmac-sha256", "key": str(args.key)}
+                    if getattr(args, "key", None)
+                    else None
+                ),
+            },
+            headers=headers or None,
+        )
+        print(json.dumps(res, indent=2))
+        return
     from mpc.enterprise.governance.signing import HMACSigningPort
     
     print(">>> Phase 1: VERIFY - Checksum & AST integrity...")
@@ -414,11 +484,68 @@ def _run_activate(args):
     print(">>> Phase 4: AUDIT  - Emitting activation event... [OK]")
     print("SUCCESS: Manifest activated.")
 
+
+def _runtime_request(
+    method: str,
+    runtime_url: str,
+    path: str,
+    payload: dict | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict:
+    base = runtime_url.rstrip("/")
+    url = f"{base}{path}"
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    req_headers = {"Content-Type": "application/json", **(headers or {})}
+    req = Request(url, data=body, headers=req_headers, method=method)
+    try:
+        with urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except HTTPError as e:
+        raw = e.read().decode("utf-8") if hasattr(e, "read") else ""
+        raise RuntimeError(f"Runtime HTTP {e.code}: {raw or e.reason}") from e
+    except URLError as e:
+        raise RuntimeError(f"Runtime connection failed: {e}") from e
+
+
+def _runtime_get(runtime_url: str, path: str) -> dict:
+    return _runtime_request("GET", runtime_url, path)
+
+
+def _runtime_post(
+    runtime_url: str,
+    path: str,
+    payload: dict,
+    headers: dict[str, str] | None = None,
+) -> dict:
+    return _runtime_request("POST", runtime_url, path, payload=payload, headers=headers)
+
+
 def _get_store():
     from mpc.features.workflow.file_store import JSONFileStateStore
     return JSONFileStateStore(".mpc_state.json")
 
 def _run_rollout(args):
+    if getattr(args, "runtime_url", None):
+        if not args.tenant_id:
+            raise RuntimeError("--tenant-id is required with --runtime-url")
+        bundle_path = Path(args.bundle)
+        artifact_id = args.bundle
+        if bundle_path.exists():
+            raw = bundle_path.read_text(encoding="utf-8")
+            created = _runtime_post(
+                args.runtime_url,
+                "/api/v1/rule-artifacts",
+                {"tenant_id": args.tenant_id, "manifest_text": raw, "signature": getattr(args, "signature", None)},
+            )
+            artifact_id = created.get("id") or artifact_id
+        res = _runtime_post(
+            args.runtime_url,
+            f"/api/v1/tenants/{args.tenant_id}/activation/canary",
+            {"artifact_id": artifact_id, "weight": float(args.weight)},
+        )
+        print(json.dumps(res, indent=2))
+        return
     store = _get_store()
     store.set_global_config("canary_bundle", args.bundle)
     store.set_global_config("canary_weight", args.weight)
@@ -436,6 +563,12 @@ def _run_approve(args):
     print(f"SUCCESS: Approval recorded.")
 
 def _run_status(args):
+    if getattr(args, "runtime_url", None):
+        if not args.tenant_id:
+            raise RuntimeError("--tenant-id is required with --runtime-url")
+        res = _runtime_get(args.runtime_url, f"/api/v1/tenants/{args.tenant_id}/activation/status")
+        print(json.dumps(res, indent=2))
+        return
     store = _get_store()
     canary = store.get_global_config("canary_bundle")
     weight = store.get_global_config("canary_weight")
@@ -454,6 +587,33 @@ def _run_status(args):
         if k.startswith("approvals_"):
             bundle = k.replace("approvals_", "")
             print(f"  - {bundle}: {', '.join(v)}")
+
+
+def _run_promote_canary(args):
+    res = _runtime_post(
+        args.runtime_url,
+        f"/api/v1/tenants/{args.tenant_id}/activation/promote-canary",
+        {},
+    )
+    print(json.dumps(res, indent=2))
+
+
+def _run_rollback(args):
+    res = _runtime_post(
+        args.runtime_url,
+        f"/api/v1/tenants/{args.tenant_id}/activation/rollback",
+        {},
+    )
+    print(json.dumps(res, indent=2))
+
+
+def _run_set_mode(args):
+    res = _runtime_post(
+        args.runtime_url,
+        f"/api/v1/tenants/{args.tenant_id}/activation/mode",
+        {"mode": args.mode},
+    )
+    print(json.dumps(res, indent=2))
 
 def _run_acl_check(args):
     from mpc.kernel.parser import parse

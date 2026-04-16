@@ -1,10 +1,31 @@
 from __future__ import annotations
 
+import os
+import tempfile
+import uuid
+
+import pytest
+import redis
 from fastapi.testclient import TestClient
 
-from tooling.mpc_runtime.app import app
+_tmp_blobs = tempfile.TemporaryDirectory()
+os.environ.setdefault("MPC_RUNTIME_BLOB_DIR", _tmp_blobs.name)
+
+from tooling.mpc_runtime.app import app  # noqa: E402
+from tooling.mpc_runtime.storage.redis_store import RedisRuntimeStore  # noqa: E402
 
 
+def _configure_real_redis_store() -> None:
+    url = os.environ.get("MPC_RUNTIME_REDIS_URL", "redis://localhost:6379/0")
+    try:
+        r = redis.Redis.from_url(url, decode_responses=False)
+        r.ping()
+    except Exception:
+        pytest.skip("Real Redis not available; set MPC_RUNTIME_REDIS_URL to run runtime tests.", allow_module_level=True)
+    app.state.runtime_store = RedisRuntimeStore(redis=r, prefix=f"mpc_runtime_test:{uuid.uuid4().hex}")
+
+
+_configure_real_redis_store()
 client = TestClient(app)
 
 
@@ -55,5 +76,22 @@ def test_forms_package_missing_active_artifact() -> None:
     )
     assert response.status_code in (409, 400)
     detail = response.json()["detail"]
-    assert detail["code"] in ("ACTIVE_ARTIFACT_REQUIRED",)
+    assert detail["code"] in ("E_RUNTIME_ACTIVE_REQUIRED",)
+
+
+def test_forms_package_quota_breach_returns_e_quota_code() -> None:
+    response = client.post(
+        "/api/v1/rule-artifacts/runtime/forms/package",
+        json={
+            "tenant_id": "t1",
+            "source": {"manifest_text": DSL},
+            "form_id": "signup",
+            "data": {},
+            "limits": {"maxTotalDefs": 0},
+        },
+        headers={"X-Tenant-Id": "t1"},
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert str(detail["code"]).startswith("E_QUOTA_")
 

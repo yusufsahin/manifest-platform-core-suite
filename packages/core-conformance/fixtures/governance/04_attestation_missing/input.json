@@ -1,9 +1,18 @@
 {
   "enterpriseMode": true,
   "requireAttestation": true,
+  "verification": {
+    "algorithm": "hmac-sha256",
+    "key": "secret1"
+  },
   "artifact": {
+    "payload": {
+      "provenance": { "astHash": "abc123" },
+      "attestations": []
+    },
+    "signatureAlgorithm": "hmac-sha256",
+    "signature": "50e3fd5a4b715beab51251986180c4a1d52c1b6537160cb2c0e2d54468cc4b8c",
     "provenance": { "astHash": "abc123" },
-    "signature": "SIG_valid_payload",
     "attestations": []
   }
 }

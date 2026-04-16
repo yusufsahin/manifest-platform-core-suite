@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "E_VALID_UNRESOLVED_REF",
+    "message": "Import source 'evil' is not in allowlist",
+    "severity": "error"
+  }
+}
+

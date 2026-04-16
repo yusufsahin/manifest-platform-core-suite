@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mpc.kernel.canonical import stable_hash
+from mpc.kernel.canonical.ordering import order_definitions
 from mpc.tooling.registry.compiler import CompiledRegistry
 
 
@@ -63,37 +64,47 @@ class ArtifactBundle:
     @property
     def bundle_hash(self) -> str:
         """Compute a deterministic hash of the entire bundle contents."""
-        payload = {
-            "artifactHash": self.registry.artifact_hash,
-            "metadata": {
-                "builder": self.metadata.builder,
-                "builtAt": self.metadata.built_at,
-                "engineVersion": self.metadata.engine_version,
-            },
-            "sbom": [
-                {"name": e.name, "version": e.version}
-                for e in sorted(self.sbom, key=lambda e: e.name)
-            ],
-            "attestationCount": len(self.attestations),
-        }
+        payload = self._to_dict(include_hash=False)
         return stable_hash(payload)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the bundle to a JSON-compatible dict."""
-        return {
+        return self._to_dict(include_hash=True)
+
+    def _to_dict(self, *, include_hash: bool) -> dict[str, Any]:
+        """Internal serializer that can omit bundleHash for hashing."""
+        compiled_manifest = {
+            "defs": order_definitions(
+                [
+                    {
+                        "kind": n.kind,
+                        "id": n.id,
+                        **({"name": n.name} if n.name is not None else {}),
+                        **({"properties": dict(n.properties)} if n.properties else {}),
+                    }
+                    for n in self.registry.defs_by_id.values()
+                ]
+            ),
+            "dependencyGraph": {
+                k: list(v) for k, v in sorted(self.registry.dependency_graph.items(), key=lambda kv: kv[0])
+            },
+        }
+
+        out = {
             "registry": {
                 "astHash": self.registry.ast_hash,
                 "metaHash": self.registry.meta_hash,
                 "artifactHash": self.registry.artifact_hash,
                 "engineVersion": self.registry.engine_version,
             },
+            "compiled_manifest": compiled_manifest,
             "metadata": {
                 "builder": self.metadata.builder,
                 "builtAt": self.metadata.built_at,
                 "sourceRef": self.metadata.source_ref,
                 "sourceHash": self.metadata.source_hash,
                 "engineVersion": self.metadata.engine_version,
-                "tags": self.metadata.tags,
+                "tags": {k: self.metadata.tags[k] for k in sorted(self.metadata.tags)},
             },
             "sbom": [
                 {
@@ -102,7 +113,7 @@ class ArtifactBundle:
                     "license": e.license,
                     "hash": e.hash,
                 }
-                for e in self.sbom
+                for e in sorted(self.sbom, key=lambda e: e.name)
             ],
             "attestations": [
                 {
@@ -111,11 +122,13 @@ class ArtifactBundle:
                     "issuedAt": a.issued_at,
                     "claims": a.claims,
                 }
-                for a in self.attestations
+                for a in sorted(self.attestations, key=lambda a: (a.type, a.issuer, a.issued_at))
             ],
             "signature": self.signature,
-            "bundleHash": self.bundle_hash,
         }
+        if include_hash:
+            out["bundleHash"] = stable_hash(out)
+        return out
 
     def verify_integrity(self, expected_hash: str | None = None) -> bool:
         """Verify the bundle's integrity against an expected hash."""

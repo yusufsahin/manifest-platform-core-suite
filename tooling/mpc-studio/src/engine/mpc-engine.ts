@@ -30,10 +30,11 @@ const KNOWN_RUNTIME_ERROR_CODES = new Set([
   'MANIFEST_INVALID_SHAPE',
   'MANIFEST_PARSE_ERROR',
   'POLICY_EVAL_FAILED',
-  'ACTIVE_ARTIFACT_REQUIRED',
-  'ARTIFACT_NOT_FOUND',
-  'TENANT_MISMATCH',
-  'FORBIDDEN',
+  'E_RUNTIME_ACTIVE_REQUIRED',
+  'E_RUNTIME_NOT_FOUND',
+  'E_RUNTIME_FORBIDDEN',
+  'E_RUNTIME_INTERNAL',
+  'E_RUNTIME_DEPRECATED',
   'E_FORM_ACTOR_TOO_LARGE',
   'E_FORM_DATA_TOO_LARGE',
   'E_FORM_DSL_TOO_LARGE',
@@ -513,6 +514,14 @@ export class MPCEngine {
         name: definition.name,
         kind: definition.kind,
       }));
+  }
+
+  async listFormsForState(dsl: string, workflowState: string): Promise<Array<{ id: string; title?: string | null }>> {
+    const local = await this.postMessage<unknown>({
+      type: 'LIST_FORMS_FOR_STATE',
+      payload: { dsl, workflowState },
+    });
+    return this.unwrapEnvelopePayload<Array<{ id: string; title?: string | null }>>(local);
   }
 
   async evaluateExpr(expr: string, context?: any, enableTrace: boolean = false): Promise<any> {

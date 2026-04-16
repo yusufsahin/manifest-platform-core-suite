@@ -64,6 +64,12 @@ ERROR_CODES: frozenset[str] = frozenset({
     "E_GOV_ATTESTATION_MISSING",
     "E_GOV_ACTIVATION_FAILED",
     "E_QUOTA_EXCEEDED",
+    # Runtime (Remote API)
+    "E_RUNTIME_NOT_FOUND",
+    "E_RUNTIME_FORBIDDEN",
+    "E_RUNTIME_ACTIVE_REQUIRED",
+    "E_RUNTIME_INTERNAL",
+    "E_RUNTIME_DEPRECATED",
 })
 
 REASON_CODES: frozenset[str] = frozenset({
